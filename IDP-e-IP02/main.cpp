@@ -23,7 +23,7 @@
 #define SHUTTER		FPS
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	48
-#define FRAMENUM_MAX 500
+#define FRAMENUM_MAX 200
 #define LUMINANCE_THRESHOLD	90
 
 using namespace IDPExpress;
@@ -63,8 +63,9 @@ ofstream logfile;
 char filename[20];
 
 // self tuning
-int axisY=33;
-int axisX[8]={338, 319, 301, 282, 263, 245, 227, 209};
+int axisY=16;
+int axisX[8]={331, 346, 361, 376, 391, 405, 420, 435};
+int frameno[FRAMENUM_MAX];
 
 int main(){
 
@@ -72,6 +73,9 @@ int main(){
 	if (idpConf.setRecordRate(FPS)						== PDC_FAILED) return 1;
 	if (idpConf.setShutterSpeed(SHUTTER)				== PDC_FAILED) return 1;
 	if (idpConf.setResolution(IMG_WIDTH, IMG_HEIGHT)	== PDC_FAILED) return 1;
+
+	// shutter speed delay
+	// idpConf.writeRegister(0, 0xb4, 1, 0);   // 1 = 9.9ns   
 
 	if (idpConf.setPixelGainMode()						== PDC_FAILED) return 1;
 	if (idpConf.setLiveStatus()							== PDC_FAILED) return 1;
@@ -126,7 +130,7 @@ int main(){
 
 	logfile.open("logtime-fixedpoints.txt", ios::app);
 	logfile << "start " << GetTickCount() << endl;;
-	//logfile.close();
+	logfile.close();
 
 	for(framenum=0; framenum<FRAMENUM_MAX;){
 		if( idpConf.getLiveFrameAddress(0, &nFrameNo, &pBaseAddress) == PDC_FAILED ) break;
@@ -134,7 +138,6 @@ int main(){
 		oldFrameNo = nFrameNo;
 
 		idpUtil.setBase((UINT8 *)pBaseAddress + 8);
-
 		//		idpUtil.getHeadData(imgHead.data, 1);
 		idpUtil.getHeadData(img[framenum].data, 1);
 
@@ -149,6 +152,8 @@ int main(){
 		value_temp |= (1<<n);
 		}
 		}*/
+		frameno[framenum]= nFrameNo;
+
 		value_temp= 0;
 		if (img[framenum].data[(axisY*IMG_WIDTH + axisX[0])] > LUMINANCE_THRESHOLD) value_temp |= 1;
 		if (img[framenum].data[(axisY*IMG_WIDTH + axisX[1])] > LUMINANCE_THRESHOLD) value_temp |= 2;
@@ -162,6 +167,8 @@ int main(){
 		// logfile << framenum << " reads " << char(value_temp) << '(' << int(value_temp) << ')' <<  endl;
 		//logfile << "start " << GetTickCount() << endl;;
 
+
+		/*
 		if (state == 0){ // if waiting for char
 			state= 1;
 			// read new char
@@ -192,10 +199,12 @@ int main(){
 			//qDebug("read zero at %d",framenum);
 			//cout << framenum << " reads zero" << endl;
 		}
+		*/
+				
 		framenum++;
 	}
 
-	//logfile.open("logtime-fixedpoints.txt", ios::app);
+	logfile.open("logtime-fixedpoints.txt", ios::app);
 	logfile << "stop  " << GetTickCount() << endl;;
 	logfile.close();
 	
@@ -238,8 +247,9 @@ int main(){
 		//logfile << endl;
 		//logfile.close();
 
-		/*logfile.open("logdata-fixedpoints.txt", ios::app);
-		logfile << int(img[framenum].data[(axisY*IMG_WIDTH + axisX[0])]) << ';' << \
+		logfile.open("logdata-intensityfixedpoints.txt", ios::app);
+		logfile << int(frameno[framenum]) << ';' <<\
+			int(img[framenum].data[(axisY*IMG_WIDTH + axisX[0])]) << ';' << \
 			int(img[framenum].data[axisY*IMG_WIDTH + axisX[1]]) << ';' << \
 			int(img[framenum].data[axisY*IMG_WIDTH + axisX[2]]) << ';' << \
 			int(img[framenum].data[axisY*IMG_WIDTH + axisX[3]]) << ';' << \
@@ -248,10 +258,10 @@ int main(){
 			int(img[framenum].data[axisY*IMG_WIDTH + axisX[6]]) << ';' << \
 			int(img[framenum].data[axisY*IMG_WIDTH + axisX[7]]) << ';';
 		logfile << endl;
-		logfile.close();*/
+		logfile.close();
 
 	}
-
+	
 	if (idpConf.closeDevice() == PDC_FAILED) return 1;
 	destroyAllWindows();
 	return 0;
