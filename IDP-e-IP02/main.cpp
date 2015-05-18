@@ -20,7 +20,7 @@
 #pragma comment(lib, "PDCLIB.lib")
 
 #define FPS			10000
-#define SHUTTER		FPS
+#define SHUTTER		56000
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	48
 #define FRAMENUM_MAX 200
@@ -63,9 +63,9 @@ ofstream logfile;
 char filename[20];
 
 // self tuning
-int axisY=16;
-int axisX[8]={331, 346, 361, 376, 391, 405, 420, 435};
-int frameno[FRAMENUM_MAX];
+int axisY=17;
+//int axisX[8]={338, 319, 301, 282, 263, 245, 227, 209};
+int axisX[8]={328, 344, 359, 374, 388, 403, 418, 433};
 
 int main(){
 
@@ -73,9 +73,6 @@ int main(){
 	if (idpConf.setRecordRate(FPS)						== PDC_FAILED) return 1;
 	if (idpConf.setShutterSpeed(SHUTTER)				== PDC_FAILED) return 1;
 	if (idpConf.setResolution(IMG_WIDTH, IMG_HEIGHT)	== PDC_FAILED) return 1;
-
-	// shutter speed delay
-	// idpConf.writeRegister(0, 0xb4, 1, 0);   // 1 = 9.9ns   
 
 	if (idpConf.setPixelGainMode()						== PDC_FAILED) return 1;
 	if (idpConf.setLiveStatus()							== PDC_FAILED) return 1;
@@ -113,13 +110,13 @@ int main(){
 	}
 
 	int framenum;
-
-	img = new cv::Mat [FRAMENUM_MAX];
 	imgHead			= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
+	
+	img = new cv::Mat [FRAMENUM_MAX];
 	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		img[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
 	}
-
+	
 	//namedWindow("Result");
 
 	Timer tm;
@@ -130,62 +127,64 @@ int main(){
 
 	logfile.open("logtime-fixedpoints.txt", ios::app);
 	logfile << "start " << GetTickCount() << endl;;
-	logfile.close();
+	//logfile.close();
 
+	state=0;
 	for(framenum=0; framenum<FRAMENUM_MAX;){
 		if( idpConf.getLiveFrameAddress(0, &nFrameNo, &pBaseAddress) == PDC_FAILED ) break;
 		if(oldFrameNo != 0 && nFrameNo == oldFrameNo) continue;
 		oldFrameNo = nFrameNo;
 
 		idpUtil.setBase((UINT8 *)pBaseAddress + 8);
-		//		idpUtil.getHeadData(imgHead.data, 1);
-		idpUtil.getHeadData(img[framenum].data, 1);
 
+		idpUtil.getHeadData(imgHead.data, 1);
+		//idpUtil.getHeadData(img[framenum].data, 1);
 		//imshow("Result", img[framenum]);
 		//imshow("Result", imgHead);
 
-		// read current frame's character value
+		// read current frame's character value (iterative)
 		/*value_temp= 0;
 		for (int n=0; n<8; n++){
 		if (img[framenum].data[(axisY*IMG_WIDTH + axisX[n])] > LUMINANCE_THRESHOLD){
-
 		value_temp |= (1<<n);
 		}
 		}*/
-		frameno[framenum]= nFrameNo;
-
+		
 		value_temp= 0;
-		if (img[framenum].data[(axisY*IMG_WIDTH + axisX[0])] > LUMINANCE_THRESHOLD) value_temp |= 1;
-		if (img[framenum].data[(axisY*IMG_WIDTH + axisX[1])] > LUMINANCE_THRESHOLD) value_temp |= 2;
-		if (img[framenum].data[(axisY*IMG_WIDTH + axisX[2])] > LUMINANCE_THRESHOLD) value_temp |= 4;
-		if (img[framenum].data[(axisY*IMG_WIDTH + axisX[3])] > LUMINANCE_THRESHOLD) value_temp |= 8;
-		if (img[framenum].data[(axisY*IMG_WIDTH + axisX[4])] > LUMINANCE_THRESHOLD) value_temp |= 16;
-		if (img[framenum].data[(axisY*IMG_WIDTH + axisX[5])] > LUMINANCE_THRESHOLD) value_temp |= 32;
-		if (img[framenum].data[(axisY*IMG_WIDTH + axisX[6])] > LUMINANCE_THRESHOLD) value_temp |= 64;
-		if (img[framenum].data[(axisY*IMG_WIDTH + axisX[7])] > LUMINANCE_THRESHOLD) value_temp |= 128;
-		// temporal character being read
+		if (imgHead.data[(axisY*IMG_WIDTH + axisX[7])] > LUMINANCE_THRESHOLD) {
+			if (imgHead.data[(axisY*IMG_WIDTH + axisX[0])] > LUMINANCE_THRESHOLD) value_temp |= 1;
+			if (imgHead.data[(axisY*IMG_WIDTH + axisX[1])] > LUMINANCE_THRESHOLD) value_temp |= 2;
+			if (imgHead.data[(axisY*IMG_WIDTH + axisX[2])] > LUMINANCE_THRESHOLD) value_temp |= 4;
+			if (imgHead.data[(axisY*IMG_WIDTH + axisX[3])] > LUMINANCE_THRESHOLD) value_temp |= 8;
+			if (imgHead.data[(axisY*IMG_WIDTH + axisX[4])] > LUMINANCE_THRESHOLD) value_temp |= 16;
+			if (imgHead.data[(axisY*IMG_WIDTH + axisX[5])] > LUMINANCE_THRESHOLD) value_temp |= 32;
+			if (imgHead.data[(axisY*IMG_WIDTH + axisX[6])] > LUMINANCE_THRESHOLD) value_temp |= 64;
+		}
+		//temporal character being read
 		// logfile << framenum << " reads " << char(value_temp) << '(' << int(value_temp) << ')' <<  endl;
-		//logfile << "start " << GetTickCount() << endl;;
-
-
+		if (value_temp) logfile << char(value_temp);
+		
 		/*
 		if (state == 0){ // if waiting for char
 			state= 1;
+			logfile << char(value_temp) << endl;
 			// read new char
 			// redo buffer from the front on CR, otherwise continue buffer
-			if (value_temp=='\r'){
+			if (value_temp==13){
 				buffer[index_char]= 0;
-				str.assign (buffer,index_char);
-				logfile << "completed line: " << str << " length " << index_char << endl;
+				//str.assign (buffer,index_char);
+				//logfile << buffer << endl;
+				strcpy(buffer,"");
 				index_char= 0;
 				// read complete line here, flush buffer
-			} else if((value_temp != value_current) && (value_temp)){
+			} else if((value_temp != value_current) && (value_temp)){ // new char read
 				//logfile << framenum << " newly reads " << char(value_temp) << '(' << int(value_temp) << ')' << endl;
 				buffer[index_char] = value_temp;
 				value_current = value_temp;
 				index_char++;
+				
 				// cout << framenum << " reads " << value_current << endl;
-				// read new char here
+				
 			}
 		} else {
 			if (value_temp == 0 ) state= 0; // sync zero frame
@@ -196,60 +195,38 @@ int main(){
 				index_char++;
 				state=0;
 			}
-			//qDebug("read zero at %d",framenum);
 			//cout << framenum << " reads zero" << endl;
 		}
 		*/
-				
 		framenum++;
 	}
 
-	logfile.open("logtime-fixedpoints.txt", ios::app);
-	logfile << "stop  " << GetTickCount() << endl;;
+	//logfile.open("logtime-fixedpoints.txt", ios::app);
+	logfile << endl << "stop  " << GetTickCount() << endl;;
+	logfile << "------------" << endl;;
 	logfile.close();
 	
 	vector<int> compression_params;
 	compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
 	compression_params.push_back(9);
 
-	/*logfile.open("logpixel-fixedpoints.txt", ios::app);
-	for (int j=0; j<IMG_HEIGHT; j++){
-	for (int i=0; i<IMG_WIDTH; i++){
-	logfile << int(img[17].data[(j*IMG_WIDTH + i)]) << ';';
-	}
-	logfile << endl;
-	}
-	logfile << endl;
-	logfile.close();*/
-
+	
+	/*
 	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		try {
-			sprintf(filename,"%6.6d.png",framenum);
-			/*for (int i=0; i<IMG_WIDTH; i++){
-			img[framenum].data[axisY*IMG_WIDTH + i] = 200;
-			}*/
-			imwrite(filename, img[framenum], compression_params);
+			sprintf(filename,"%6.6d.jpg",framenum);
+			// for (int i=0; i<IMG_WIDTH; i++) img[framenum].data[axisY*IMG_WIDTH + i] = 200;
+			// imwrite(filename, img[framenum], compression_params);
+			imwrite(filename, img[framenum]);
 
 		}
 		catch (runtime_error& ex) {
-			fprintf(stderr, "Exception converting image to PNG format: %s\n", ex.what());
+			fprintf(stderr, "Exception converting image to JPG format: %s\n", ex.what());
 			return 1;
 		}
-
-		//logfile.open("logimage-fixedpoints.txt", ios::app);
-		//for (int j=0; j<IMG_HEIGHT; j++){
-		//	for (int i=0; i<IMG_WIDTH; i++){
-		//		if(img[framenum].data[j*IMG_WIDTH + i] > 80) 
-		//			logfile << "bright spot!! " << j << ',' << i << " on " << framenum <<  endl;
-		//	}
-		//	logfile << endl;
-		//}	
-		//logfile << endl;
-		//logfile.close();
-
-		logfile.open("logdata-intensityfixedpoints.txt", ios::app);
-		logfile << int(frameno[framenum]) << ';' <<\
-			int(img[framenum].data[(axisY*IMG_WIDTH + axisX[0])]) << ';' << \
+		
+		logfile.open("logdata-fixedpoints.txt", ios::app);
+		logfile << int(img[framenum].data[(axisY*IMG_WIDTH + axisX[0])]) << ';' << \
 			int(img[framenum].data[axisY*IMG_WIDTH + axisX[1]]) << ';' << \
 			int(img[framenum].data[axisY*IMG_WIDTH + axisX[2]]) << ';' << \
 			int(img[framenum].data[axisY*IMG_WIDTH + axisX[3]]) << ';' << \
@@ -259,10 +236,12 @@ int main(){
 			int(img[framenum].data[axisY*IMG_WIDTH + axisX[7]]) << ';';
 		logfile << endl;
 		logfile.close();
-
+		
 	}
 	
+	*/
+
 	if (idpConf.closeDevice() == PDC_FAILED) return 1;
 	destroyAllWindows();
 	return 0;
-}
+	}
