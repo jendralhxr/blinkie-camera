@@ -20,11 +20,11 @@
 #pragma comment(lib, "PDCLIB.lib")
 
 #define FPS			10000
-#define SHUTTER		56000
+#define SHUTTER		160000
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	48
 #define FRAMENUM_MAX 200
-#define LUMINANCE_THRESHOLD	90
+#define LUMINANCE_THRESHOLD	60
 
 using namespace IDPExpress;
 using namespace mytimer;
@@ -52,7 +52,7 @@ IDPExpressConfig idpConf(1);
 Mat	imgHead;
 Mat *img;
 
-char value_current, value_temp;
+char value_current, value_temp, value_prev;
 char buffer[256];
 char state; // 0 waiting; 1 read
 int index_char= 0;
@@ -63,9 +63,9 @@ ofstream logfile;
 char filename[20];
 
 // self tuning
-int axisY=17;
+int axisY=18;
 //int axisX[8]={338, 319, 301, 282, 263, 245, 227, 209};
-int axisX[8]={328, 344, 359, 374, 388, 403, 418, 433};
+int axisX[8]={336, 351, 366, 381, 395, 411, 426, 440};
 
 int main(){
 
@@ -130,7 +130,7 @@ int main(){
 	//logfile.close();
 
 	state=0;
-	for(framenum=0; framenum<FRAMENUM_MAX;){
+	while(1){
 		if( idpConf.getLiveFrameAddress(0, &nFrameNo, &pBaseAddress) == PDC_FAILED ) break;
 		if(oldFrameNo != 0 && nFrameNo == oldFrameNo) continue;
 		oldFrameNo = nFrameNo;
@@ -162,7 +162,10 @@ int main(){
 		}
 		//temporal character being read
 		// logfile << framenum << " reads " << char(value_temp) << '(' << int(value_temp) << ')' <<  endl;
-		if (value_temp) logfile << char(value_temp);
+		if ((value_temp!=value_prev) && value_temp){
+			logfile << char(value_temp);
+			value_prev= value_temp;
+		}
 		
 		/*
 		if (state == 0){ // if waiting for char
