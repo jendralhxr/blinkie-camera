@@ -20,11 +20,12 @@
 #pragma comment(lib, "PDCLIB.lib")
 
 #define FPS			10000
-#define SHUTTER		160000
+#define SHUTTER		56000
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	48
 #define FRAMENUM_MAX 200
 #define LUMINANCE_THRESHOLD	60
+#define DELAY_UNIT 10
 
 using namespace IDPExpress;
 using namespace mytimer;
@@ -63,9 +64,12 @@ ofstream logfile;
 char filename[20];
 
 // self tuning
-int axisY=18;
-//int axisX[8]={338, 319, 301, 282, 263, 245, 227, 209};
-int axisX[8]={336, 351, 366, 381, 395, 411, 426, 440};
+int axisY=8;
+int axisX[8]={329, 343, 359, 374, 389, 404, 419, 433};
+
+unsigned char max_global, min_global, max_current, min_current, clk_intensity;
+unsigned int delay;
+bool state_rise, state_fall;
 
 int main(){
 
@@ -111,14 +115,11 @@ int main(){
 
 	int framenum;
 	imgHead			= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
-	
 	img = new cv::Mat [FRAMENUM_MAX];
 	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		img[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
 	}
 	
-	//namedWindow("Result");
-
 	Timer tm;
 	tm.init();	
 
@@ -151,7 +152,7 @@ int main(){
 		}*/
 		
 		value_temp= 0;
-		if (imgHead.data[(axisY*IMG_WIDTH + axisX[7])] > LUMINANCE_THRESHOLD) {
+		//if (imgHead.data[(axisY*IMG_WIDTH + axisX[7])] > LUMINANCE_THRESHOLD) {
 			if (imgHead.data[(axisY*IMG_WIDTH + axisX[0])] > LUMINANCE_THRESHOLD) value_temp |= 1;
 			if (imgHead.data[(axisY*IMG_WIDTH + axisX[1])] > LUMINANCE_THRESHOLD) value_temp |= 2;
 			if (imgHead.data[(axisY*IMG_WIDTH + axisX[2])] > LUMINANCE_THRESHOLD) value_temp |= 4;
@@ -159,7 +160,7 @@ int main(){
 			if (imgHead.data[(axisY*IMG_WIDTH + axisX[4])] > LUMINANCE_THRESHOLD) value_temp |= 16;
 			if (imgHead.data[(axisY*IMG_WIDTH + axisX[5])] > LUMINANCE_THRESHOLD) value_temp |= 32;
 			if (imgHead.data[(axisY*IMG_WIDTH + axisX[6])] > LUMINANCE_THRESHOLD) value_temp |= 64;
-		}
+		//}
 		//temporal character being read
 		// logfile << framenum << " reads " << char(value_temp) << '(' << int(value_temp) << ')' <<  endl;
 		if ((value_temp!=value_prev) && value_temp){
@@ -167,6 +168,37 @@ int main(){
 			value_prev= value_temp;
 		}
 		
+		// dummy pll function here
+		clk_intensity= imgHead.data[(axisY*IMG_WIDTH + axisX[7])];
+		if (clk_intensity > max_current){
+			max_current= clk_intensity;
+			state_rise= TRUE;
+		}
+		if (clk_intensity < min_current){
+			min_current= clk_intensity;
+			state_fall= TRUE;
+		}
+		if (state_rise && state_fall){
+			if ((max_current-min_current) > (max_global-min_global)){
+				max_global= max_current;
+				min_global= min_current;
+				min_current= 255;
+				max_current= 0;
+				delay += DELAY_UNIT;
+			}
+			else {
+				delay = delay - (3*DELAY_UNIT);
+				if (delay<0) delay=0;
+				max_global= 0;
+				min_global= 255;
+				max_current= 0;
+				min_current= 255;
+			}
+		}
+		// shutter speed delay
+		idpConf.writeRegister(0, 0xb4, delay, 0);
+		
+
 		/*
 		if (state == 0){ // if waiting for char
 			state= 1;
