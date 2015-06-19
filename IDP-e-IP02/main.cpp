@@ -24,7 +24,7 @@
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	48
 #define FRAMENUM_MAX 400
-#define LUMINANCE_THRESHOLD	60
+#define LUMINANCE_THRESHOLD	75
 #define DELAY_UNIT 100
 
 using namespace IDPExpress;
@@ -66,8 +66,8 @@ ofstream logfile;
 char filename[20];
 
 // self tuning
-int axisY=7;
-int axisX[8]={103, 117, 131, 144, 157, 171, 185, 198};
+int axisY=31;
+int axisX[8]={322, 309, 295, 282, 268, 255, 241, 227};
 bool state[8];
 
 unsigned char max_global, min_global, max_current, min_current, clk_intensity;
@@ -123,12 +123,13 @@ int main(){
 	
 	unsigned long	nFrameNo, oldFrameNo = 0;
 	void			*pBaseAddress;
-
-	logfile.open("logtime-fixedpoints.txt", ios::app);
-	logfile << "start " << GetTickCount() << endl;;
-	//logfile.close();
-
+	
 	delay= 600;
+	//for (delay=0; delay<=1000; delay+=100){
+	logfile.open("logtime-fixedpoints.txt", ios::app);
+	logfile << "start " << GetTickCount() << " (delay= " << delay << ")" << endl;;
+	//logfile.close();
+	
 	idpConf.writeRegister(0, 0xb4, delay, 0);
 
 	// state=0;
@@ -137,14 +138,13 @@ int main(){
 	waitframe:
 		if (idpConf.getLiveFrameAddress(0, &nFrameNo, &pBaseAddress) == PDC_FAILED ) break;
 		if (nFrameNo == oldFrameNo) goto waitframe;
-
 		oldFrameNo = nFrameNo;
 		//logfile << framenum << "--" << nFrameNo << endl;
+		idpConf.writeRegister(0, 0xb4, delay, 0);
 	
 		idpUtil.setBase((UINT8 *)pBaseAddress + 8);
-
 		//idpUtil.getHeadData(imgHead.data, 1);
-		idpUtil.getHeadData(img[framenum].data, 1);
+		idpUtil.getHeadData(img[framenum].data, 0);
 		
 		// read current frame's character value (iterative)
 		/*value_temp= 0;
@@ -169,12 +169,13 @@ int main(){
 		if (state[6]) value_temp |= 64;
 
 		//temporal character being read
-		// add (even) parity check
+		// (even) parity check
 		// logfile << framenum << " reads " << char(value_temp) << '(' << int(value_temp) << ')' <<  endl;
-		if ((value_temp!=value_prev) && value_temp && \
-			(state[0]^state[1]^state[2]^state[3]^state[4]^state[5]^state[6]^state[7]^TRUE)){
-			logfile << char(value_temp);
-			value_prev= value_temp;
+		if (value_temp){ 
+			if (state[0]^state[1]^state[2]^state[3]^state[4]^state[5]^state[6]^state[7]^TRUE)
+				logfile << char(value_temp); 
+			else logfile << 'x'; 
+				//value_prev= value_temp;
 		}
 		
 		/*
@@ -254,17 +255,19 @@ int main(){
 	
 	logfile << "------------" << endl;;
 	logfile.close();
-	
+	//} // for delay
+
 	vector<int> compression_params;
 	compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
 	compression_params.push_back(9);
 
+	
 	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		try {
-			sprintf(filename,"%6.6d.jpg",framenum);
+			sprintf(filename,"%4.4d.jpg",framenum);
 			// for (int i=0; i<IMG_WIDTH; i++) img[framenum].data[axisY*IMG_WIDTH + i] = 200;
-			// imwrite(filename, img[framenum], compression_params); 
-			// imwrite(filename, img[framenum]);
+			// imwrite(filename, img[framenum], compression_params);  // PNG
+			 imwrite(filename, img[framenum]); // another
 
 		}
 		catch (runtime_error& ex) {
