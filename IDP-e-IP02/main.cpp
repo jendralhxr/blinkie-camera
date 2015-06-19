@@ -25,7 +25,7 @@
 #define IMG_HEIGHT	48
 #define FRAMENUM_MAX 400
 #define LUMINANCE_THRESHOLD	75
-#define DELAY_UNIT 100
+#define DELAY_STEP 400
 
 using namespace IDPExpress;
 using namespace mytimer;
@@ -68,10 +68,10 @@ char filename[20];
 // self tuning
 int axisY=31;
 int axisX[8]={322, 309, 295, 282, 268, 255, 241, 227};
-bool state[8];
+bool state[8], dropped=FALSE;
 
 unsigned char max_global, min_global, max_current, min_current, clk_intensity;
-unsigned int delay;
+unsigned int delay=0;
 bool state_rise, state_fall;
 
 int main(){
@@ -113,7 +113,6 @@ int main(){
 	else idpConf.writeRegister(0, ADDR_THRE_HSV_CAM2, 0x00ff);
 
 	// mess start here
-
 	int framenum;
 	imgHead			= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
 	img = new cv::Mat [FRAMENUM_MAX];
@@ -124,24 +123,19 @@ int main(){
 	unsigned long	nFrameNo, oldFrameNo = 0;
 	void			*pBaseAddress;
 	
-	delay= 600;
-	//for (delay=0; delay<=1000; delay+=100){
 	logfile.open("logtime-fixedpoints.txt", ios::app);
-	logfile << "start " << GetTickCount() << " (delay= " << delay << ")" << endl;;
+	logfile << "start " << GetTickCount() << " (delay= " << DELAY_STEP << ")" << endl;;
 	//logfile.close();
-	
-	idpConf.writeRegister(0, 0xb4, delay, 0);
-
+	idpConf.writeRegister(0, 0xb4, 0, 0);
 	// state=0;
-	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
 	//while(1){
+	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
 	waitframe:
 		if (idpConf.getLiveFrameAddress(0, &nFrameNo, &pBaseAddress) == PDC_FAILED ) break;
 		if (nFrameNo == oldFrameNo) goto waitframe;
-		oldFrameNo = nFrameNo;
+	oldFrameNo = nFrameNo;
 		//logfile << framenum << "--" << nFrameNo << endl;
-		idpConf.writeRegister(0, 0xb4, delay, 0);
-	
+		
 		idpUtil.setBase((UINT8 *)pBaseAddress + 8);
 		//idpUtil.getHeadData(imgHead.data, 1);
 		idpUtil.getHeadData(img[framenum].data, 0);
@@ -159,7 +153,6 @@ int main(){
 			state[i] = FALSE;
 			if (img[framenum].data[(axisY*IMG_WIDTH + axisX[i])] > LUMINANCE_THRESHOLD) state[i] = TRUE;
 		}
-				
 		if (state[0]) value_temp |= 1;
 		if (state[1]) value_temp |= 2;
 		if (state[2]) value_temp |= 4;
@@ -171,13 +164,30 @@ int main(){
 		//temporal character being read
 		// (even) parity check
 		// logfile << framenum << " reads " << char(value_temp) << '(' << int(value_temp) << ')' <<  endl;
-		if (value_temp){ 
+		if (dropped){
+		logfile << "D" <<framenum; 
+		}
+		if (value_temp && !dropped){ 
 			if (state[0]^state[1]^state[2]^state[3]^state[4]^state[5]^state[6]^state[7]^TRUE)
 				logfile << char(value_temp); 
-			else logfile << 'x'; 
+			else logfile << "X"<<framenum; 
 				//value_prev= value_temp;
 		}
 		
+		// frame throttling test on arbitrarily set DELAY_STEP value 
+		if (dropped){
+			dropped= FALSE;
+			logfile << "dropval"<<delay ;
+		}
+		else {
+			delay += DELAY_STEP;
+			if (delay >= 10000){
+				dropped= TRUE;
+				delay -= 10000;
+			}
+		}	
+		idpConf.writeRegister(0, 0xb4, delay, 0);
+	
 		/*
 		// dummy pll function here
 		clk_intensity= imgHead.data[(axisY*IMG_WIDTH + axisX[7])];
