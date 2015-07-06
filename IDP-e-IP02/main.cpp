@@ -25,7 +25,7 @@
 #define IMG_HEIGHT	48
 #define FRAMENUM_MAX 400
 #define LUMINANCE_THRESHOLD	75
-#define DELAY_STEP 400
+#define DELAY_STEP 200
 
 using namespace IDPExpress;
 using namespace mytimer;
@@ -67,7 +67,7 @@ char filename[20];
 
 // self tuning
 int axisY=31;
-int axisX[8]={322, 309, 295, 282, 268, 255, 241, 227};
+int axisX[8]={324, 310, 296, 283, 270, 256, 243, 229};
 bool state[8], dropped=FALSE;
 
 unsigned char max_global, min_global, max_current, min_current, clk_intensity;
@@ -126,7 +126,9 @@ int main(){
 	logfile.open("logtime-fixedpoints.txt", ios::app);
 	logfile << "start " << GetTickCount() << " (delay= " << DELAY_STEP << ")" << endl;;
 	//logfile.close();
+	
 	idpConf.writeRegister(0, 0xb4, 0, 0);
+	
 	// state=0;
 	//while(1){
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
@@ -136,7 +138,7 @@ int main(){
 	oldFrameNo = nFrameNo;
 		//logfile << framenum << "--" << nFrameNo << endl;
 		
-		idpUtil.setBase((UINT8 *)pBaseAddress + 8);
+		idpUtil.setBase((UINT8 *)pBaseAddress -8);
 		//idpUtil.getHeadData(imgHead.data, 1);
 		idpUtil.getHeadData(img[framenum].data, 0);
 		
@@ -165,7 +167,7 @@ int main(){
 		// (even) parity check
 		// logfile << framenum << " reads " << char(value_temp) << '(' << int(value_temp) << ')' <<  endl;
 		if (dropped){
-		logfile << "D" <<framenum; 
+		logfile << endl << "D" <<framenum << endl; 
 		}
 		if (value_temp && !dropped){ 
 			if (state[0]^state[1]^state[2]^state[3]^state[4]^state[5]^state[6]^state[7]^TRUE)
@@ -177,16 +179,20 @@ int main(){
 		// frame throttling test on arbitrarily set DELAY_STEP value 
 		if (dropped){
 			dropped= FALSE;
-			logfile << "dropval"<<delay ;
 		}
 		else {
+			//if(!(framenum%3)) delay += DELAY_STEP;
 			delay += DELAY_STEP;
 			if (delay >= 10000){
 				dropped= TRUE;
 				delay -= 10000;
 			}
 		}	
-		idpConf.writeRegister(0, 0xb4, delay, 0);
+
+	idpConf.writeRegister(0, 0xb4, delay, 0);
+	//idpUtil.setBase((UINT8 *)pBaseAddress - 8);
+		
+		//if(!(framenum%3))idpConf.writeRegister(0, 0xb4, delay, 0);
 	
 		/*
 		// dummy pll function here
@@ -259,8 +265,6 @@ int main(){
 	}
 
 	//logfile.open("logtime-fixedpoints.txt", ios::app);
-	
-
 	logfile << endl << "stop  " << GetTickCount() << endl;;
 	
 	logfile << "------------" << endl;;
