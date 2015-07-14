@@ -23,9 +23,9 @@
 #define SHUTTER		56000
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	48
-#define FRAMENUM_MAX 400
+#define FRAMENUM_MAX 500
 #define LUMINANCE_THRESHOLD	75
-#define DELAY_STEP 200
+#define DELAY_STEP 240
 
 using namespace IDPExpress;
 using namespace mytimer;
@@ -66,16 +66,17 @@ ofstream logfile;
 char filename[20];
 
 // self tuning
-int axisY=31;
-int axisX[8]={324, 310, 296, 283, 270, 256, 243, 229};
+int axisY=18;
+//int axisY=16;
+int axisX[8]={167, 151, 136, 120, 105, 90, 74, 59};
 bool state[8], dropped=FALSE;
 
 unsigned char max_global, min_global, max_current, min_current, clk_intensity;
 unsigned int delay=0;
 bool state_rise, state_fall;
+int image_offset;
 
 int main(){
-
 	if (idpConf.init()									== PDC_FAILED) return 1;
 	if (idpConf.setRecordRate(FPS)						== PDC_FAILED) return 1;
 	if (idpConf.setShutterSpeed(SHUTTER)				== PDC_FAILED) return 1;
@@ -138,7 +139,11 @@ int main(){
 	oldFrameNo = nFrameNo;
 		//logfile << framenum << "--" << nFrameNo << endl;
 		
-		idpUtil.setBase((UINT8 *)pBaseAddress -8);
+	if (dropped){
+		idpUtil.setBase((UINT8 *)pBaseAddress-8);
+	}
+	else idpUtil.setBase((UINT8 *)pBaseAddress-8); // cause it's head2
+		//idpUtil.setBase((UINT8 *)pBaseAddress-8-98304-16); // head2 prev frame
 		//idpUtil.getHeadData(imgHead.data, 1);
 		idpUtil.getHeadData(img[framenum].data, 0);
 		
@@ -167,12 +172,12 @@ int main(){
 		// (even) parity check
 		// logfile << framenum << " reads " << char(value_temp) << '(' << int(value_temp) << ')' <<  endl;
 		if (dropped){
-		logfile << endl << "D" <<framenum << endl; 
+		logfile << "D" << framenum; 
 		}
 		if (value_temp && !dropped){ 
 			if (state[0]^state[1]^state[2]^state[3]^state[4]^state[5]^state[6]^state[7]^TRUE)
 				logfile << char(value_temp); 
-			else logfile << "X"<<framenum; 
+			else logfile << "X" <<framenum; 
 				//value_prev= value_temp;
 		}
 		
@@ -182,18 +187,18 @@ int main(){
 		}
 		else {
 			//if(!(framenum%3)) delay += DELAY_STEP;
-			delay += DELAY_STEP;
+			if (framenum>100) delay += DELAY_STEP;
 			if (delay >= 10000){
 				dropped= TRUE;
 				delay -= 10000;
+				//idpUtil.setBase((UINT8 *)pBaseAddress - 8);
 			}
 		}	
 
+	//if(!(framenum%4))idpConf.writeRegister(0, 0xb4, delay, 0);
 	idpConf.writeRegister(0, 0xb4, delay, 0);
-	//idpUtil.setBase((UINT8 *)pBaseAddress - 8);
-		
-		//if(!(framenum%3))idpConf.writeRegister(0, 0xb4, delay, 0);
-	
+	//idpUtil.setBase((UINT8 *)pBaseAddress-8);
+
 		/*
 		// dummy pll function here
 		clk_intensity= imgHead.data[(axisY*IMG_WIDTH + axisX[7])];
@@ -227,6 +232,7 @@ int main(){
 		
 
 		/*
+		// line buffering, all-of sync provision
 		if (state == 0){ // if waiting for char
 			state= 1;
 			logfile << char(value_temp) << endl;
@@ -244,9 +250,7 @@ int main(){
 				buffer[index_char] = value_temp;
 				value_current = value_temp;
 				index_char++;
-				
 				// cout << framenum << " reads " << value_current << endl;
-				
 			}
 		} else {
 			if (value_temp == 0 ) state= 0; // sync zero frame
@@ -269,6 +273,7 @@ int main(){
 	
 	logfile << "------------" << endl;;
 	logfile.close();
+
 	//} // for delay
 
 	vector<int> compression_params;
