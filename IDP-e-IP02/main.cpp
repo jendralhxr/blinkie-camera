@@ -25,7 +25,7 @@
 #define IMG_HEIGHT	48
 #define FRAMENUM_MAX 500
 #define LUMINANCE_THRESHOLD	75
-#define DELAY_STEP 240
+#define DELAY_STEP 1050
 
 using namespace IDPExpress;
 using namespace mytimer;
@@ -66,9 +66,9 @@ ofstream logfile;
 char filename[20];
 
 // self tuning
-int axisY=18;
+int axisY=20;
 //int axisY=16;
-int axisX[8]={167, 151, 136, 120, 105, 90, 74, 59};
+int axisX[8]={222, 207, 191, 176, 161, 145, 130, 114};
 bool state[8], dropped=FALSE;
 
 unsigned char max_global, min_global, max_current, min_current, clk_intensity;
@@ -188,6 +188,7 @@ int main(){
 		else {
 			//if(!(framenum%3)) delay += DELAY_STEP;
 			if (framenum>100) delay += DELAY_STEP;
+			//delay += DELAY_STEP;
 			if (delay >= 10000){
 				dropped= TRUE;
 				delay -= 10000;
