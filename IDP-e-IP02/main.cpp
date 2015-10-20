@@ -23,11 +23,13 @@
 #define SHUTTER		4000
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	512
-#define FRAMENUM_MAX 600
+#define FRAMENUM_MAX 1000
 #define LUMINANCE_THRESHOLD	75
 
 #define DELAY_PHASE 4000 // 1=9.9ns
-#define DELAY_BLOCK 40 // frames
+#define DELAY_FREQ 200
+#define DELAY_BLOCK 100 // frames
+#define DELAY_MAX 50505 // maximum delay unit on 2k fps is 50505
 
 using namespace IDPExpress;
 using namespace mytimer;
@@ -68,14 +70,16 @@ ofstream logfile2;
 ofstream logintensity;
 char filename[20];
 int blocknum;
+bool dropped;
+unsigned int delay;
 
 // self tuning
-int axisY=266;
-int axisX[8]={132, 166, 199, 232, 264, 297, 330, 362};
+int axisY=277;
+int axisX[8]={181, 214, 248, 281, 313, 346, 379, 411};
 bool state[8];
 
-int axisY2=390;
-int axisX2[8]={328, 296, 265, 234, 203, 172, 141, 110};
+int axisY2=398;
+int axisX2[8]={374, 343, 312, 280, 250, 219, 187, 157};
 bool state2[8];
 
 char value_current, value_temp, value_prev;
@@ -136,11 +140,11 @@ int main(){
 	void			*pBaseAddress;
 	
 	logfile.open("log-source1.txt", ios::app);
-	logfile << "start " << GetTickCount() << endl;
+	logfile << "start " << DELAY_FREQ << " " << GetTickCount() <<endl;
 	logfile2.open("log-source2.txt", ios::app);
-	logfile2 << "start " << GetTickCount() << endl;
+	logfile2 << "start " << DELAY_FREQ << " " << GetTickCount() << endl;
 	logintensity.open("log-intensity.txt", ios::app);
-	logintensity << "start " << GetTickCount() << endl;
+	logintensity << "start " << DELAY_FREQ << " " << GetTickCount() << endl;
 	idpConf.writeRegister(0, 0xb4, 0, 0);
 	
 	// state=0;
@@ -167,11 +171,43 @@ int main(){
 			state[i] = FALSE;
 			lumi_temp= img[framenum].data[(axisY*IMG_WIDTH + axisX[i])];
 			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
-			if (lumi_temp > lumi_max) lumi_max=  lumi_temp;
-			if (lumi_temp < lumi_min) lumi_min=  lumi_temp;
+			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+			lumi_temp= img[framenum].data[(axisY*IMG_WIDTH + axisX[i+1])];
+			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
+			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+			lumi_temp= img[framenum].data[(axisY*IMG_WIDTH + axisX[i-1])];
+			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
+			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+			lumi_temp= img[framenum].data[((axisY+1)*IMG_WIDTH + axisX[i])];
+			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
+			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+			lumi_temp= img[framenum].data[((axisY+1)*IMG_WIDTH + axisX[i+1])];
+			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
+			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+			lumi_temp= img[framenum].data[((axisY+1)*IMG_WIDTH + axisX[i-1])];
+			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
+			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+			lumi_temp= img[framenum].data[((axisY-1)*IMG_WIDTH + axisX[i])];
+			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
+			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+			lumi_temp= img[framenum].data[((axisY-1)*IMG_WIDTH + axisX[i+1])];
+			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
+			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+			lumi_temp= img[framenum].data[((axisY-1)*IMG_WIDTH + axisX[i-1])];
+			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
+			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
  		}
 
-		// reconst value
+		// reconstuct value
 		if (state[0]) value_temp |= 1;
 		if (state[1]) value_temp |= 2;
 		if (state[2]) value_temp |= 4;
@@ -199,11 +235,43 @@ int main(){
 			state2[i] = FALSE;
 			lumi_temp2= img[framenum].data[(axisY2*IMG_WIDTH + axisX2[i])];
 			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
-			if (lumi_temp2 > lumi_max2) lumi_max2=  lumi_temp2;
-			if (lumi_temp2 < lumi_min2) lumi_min2=  lumi_temp2;
+			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+			lumi_temp2= img[framenum].data[(axisY2*IMG_WIDTH + axisX2[i+1])];
+			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
+			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+			lumi_temp2= img[framenum].data[(axisY2*IMG_WIDTH + axisX2[i-1])];
+			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
+			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+			lumi_temp2= img[framenum].data[((axisY2+1)*IMG_WIDTH + axisX2[i])];
+			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
+			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+			lumi_temp2= img[framenum].data[((axisY2+1)*IMG_WIDTH + axisX2[i+1])];
+			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
+			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+			lumi_temp2= img[framenum].data[((axisY2+1)*IMG_WIDTH + axisX2[i-1])];
+			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
+			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+			lumi_temp2= img[framenum].data[((axisY2-1)*IMG_WIDTH + axisX2[i])];
+			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
+			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+			lumi_temp2= img[framenum].data[((axisY2-1)*IMG_WIDTH + axisX2[i+1])];
+			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
+			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+			lumi_temp2= img[framenum].data[((axisY2-1)*IMG_WIDTH + axisX2[i-1])];
+			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
+			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
 		}
 		
-		// reconst value
+		// reconstruct value
 		if (state2[0]) value_temp2 |= 1;
 		if (state2[1]) value_temp2 |= 2;
 		if (state2[2]) value_temp2 |= 4;
@@ -223,17 +291,30 @@ int main(){
 		// intensity logging
 		logintensity << blocknum << ';' << int(lumi_min) << ';' << int(lumi_max)	<< ';' << int(lumi_min2) << ';' << int(lumi_max2) << endl;
 
+		// variable frequency using frame throttling, with drops
+		if (dropped){
+			dropped= FALSE;
+			logintensity << 'D' << framenum << endl;
+		}
+		else {
+			delay += DELAY_FREQ;
+			if (delay >= DELAY_MAX){
+				dropped= TRUE;
+				delay -= DELAY_MAX;
+			}
+		}	
+		idpConf.writeRegister(0, 0xb4, delay, 0);
+				
 		// block milestones, introduce phase shift
-		blocknum++;
 		if (blocknum== DELAY_BLOCK){ // new block
+			std::cout << "mile" <<framenum << endl; 
 			blocknum=0;
 			logfile << 'B';
 			logfile2 << 'B';
 			logintensity << 'B' << endl;
-			idpConf.writeRegister(0, 0xb4, DELAY_PHASE, 0);
+		//	idpConf.writeRegister(0, 0xb4, DELAY_PHASE, 0);
 		}		
-		
-		idpConf.writeRegister(0, 0xb4, DELAY_PHASE, 0);
+		blocknum++;
 		
 		/*
 		// dummy pll function here
@@ -263,11 +344,11 @@ int main(){
 				min_current= 255;
 			}
 		}
-		// shutter speed delay
+		// adjust freq and phase accordingly
 		*/
 		
-
 		/*
+		// line buffering, 50% duty cycle
 		if (state == 0){ // if waiting for char
 			state= 1;
 			logfile << char(value_temp) << endl;
@@ -301,9 +382,9 @@ int main(){
 			//cout << framenum << " reads zero" << endl;
 		}
 		*/
-		
-	
 	}
+
+	std:cout << "start saving" << endl;
 
 	logfile << endl << "stop  " << GetTickCount() << endl;
 	logfile << "------------" << endl;;
@@ -332,6 +413,7 @@ int main(){
 			fprintf(stderr, "Exception converting image to JPG format: %s\n", ex.what());
 			return 1;
 		}
+		
 		/*
 		logfile.open("logdata-fixedpoints.txt", ios::app);
 		logfile << int(img[framenum].data[(axisY*IMG_WIDTH + axisX[0])]) << ';' << \
@@ -345,9 +427,9 @@ int main(){
 		logfile << endl;
 		logfile.close();
 		*/
-		
-		
 	}
+	
+
 	
 	if (idpConf.closeDevice() == PDC_FAILED) return 1;
 	destroyAllWindows();
