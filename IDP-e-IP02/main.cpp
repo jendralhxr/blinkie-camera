@@ -170,41 +170,25 @@ int main(){
 		lumi_max= 0;
 		lumi_min= 255;
 		
-		for (int i=0; i<8; i++){
+		for (int i=0; i<7; i++){
 			state[i] = FALSE;
 			lumi_temp= imgHead.data[(axisY*IMG_WIDTH + axisX[i])];
 			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
-			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
-			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
-			lumi_temp= imgHead.data[(axisY*IMG_WIDTH + axisX[i+1])];
+			lumi_temp= imgHead.data[(axisY*IMG_WIDTH + axisX[i]+1)];
 			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
-			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
-			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
-			lumi_temp= imgHead.data[(axisY*IMG_WIDTH + axisX[i-1])];
+			lumi_temp= imgHead.data[(axisY*IMG_WIDTH + axisX[i]-1)];
 			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
-			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
-			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
 			lumi_temp= imgHead.data[((axisY+1)*IMG_WIDTH + axisX[i])];
 			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
-			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
-			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
-			lumi_temp= imgHead.data[((axisY+1)*IMG_WIDTH + axisX[i+1])];
+			lumi_temp= imgHead.data[((axisY+1)*IMG_WIDTH + axisX[i]+1)];
 			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
-			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
-			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
-			lumi_temp= imgHead.data[((axisY+1)*IMG_WIDTH + axisX[i-1])];
+			lumi_temp= imgHead.data[((axisY+1)*IMG_WIDTH + axisX[i]-1)];
 			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
-			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
-			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
 			lumi_temp= imgHead.data[((axisY-1)*IMG_WIDTH + axisX[i])];
 			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
-			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
-			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
-			lumi_temp= imgHead.data[((axisY-1)*IMG_WIDTH + axisX[i+1])];
+			lumi_temp= imgHead.data[((axisY-1)*IMG_WIDTH + axisX[i]+1)];
 			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
-			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
-			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
-			lumi_temp= imgHead.data[((axisY-1)*IMG_WIDTH + axisX[i-1])];
+			lumi_temp= imgHead.data[((axisY-1)*IMG_WIDTH + axisX[i]-1)];
 			if (lumi_temp > LUMINANCE_THRESHOLD) state[i] = TRUE;
 			if (lumi_temp > lumi_max) lumi_max= lumi_temp;
 			else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
@@ -219,13 +203,34 @@ int main(){
 		if (state[5]) value_temp |= 32;
 		if (state[6]) value_temp |= 64;
 		
-		if (state[0]^state[1]^state[2]^state[3]^state[4]^state[5]^state[6]^state[7]^TRUE){
-			if (value_temp!=value_prev){
-				value_prev = value_temp;
-				logfile <<value_temp;
-			}
-		}
-		//else logfile << 'X' << framenum;
+		//clock LED intensity, source1
+		lumi_temp= imgHead.data[((axisY-1)*IMG_WIDTH + axisX[8])];
+		if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+		else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+		lumi_temp= imgHead.data[((axisY-1)*IMG_WIDTH + axisX[8]-1)];
+		if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+		else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+		lumi_temp= imgHead.data[((axisY-1)*IMG_WIDTH + axisX[8]+1)];
+		if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+		else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+		lumi_temp= imgHead.data[((axisY)*IMG_WIDTH + axisX[8])];
+		if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+		else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+		lumi_temp= imgHead.data[((axisY)*IMG_WIDTH + axisX[8]-1)];
+		if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+		else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+		lumi_temp= imgHead.data[((axisY)*IMG_WIDTH + axisX[8]+1)];
+		if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+		else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+		lumi_temp= imgHead.data[((axisY+1)*IMG_WIDTH + axisX[8])];
+		if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+		else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+		lumi_temp= imgHead.data[((axisY+1)*IMG_WIDTH + axisX[8]-1)];
+		if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+		else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
+		lumi_temp= imgHead.data[((axisY+1)*IMG_WIDTH + axisX[8]+1)];
+		if (lumi_temp > lumi_max) lumi_max= lumi_temp;
+		else if (lumi_temp < lumi_min) lumi_min= lumi_temp;
 
 		// for source2
 		// current character being read
@@ -234,44 +239,26 @@ int main(){
 		lumi_max2= 0;
 		lumi_min2= 255;
 
-		for (int i=0; i<8; i++){
+		for (int i=0; i<7; i++){
 			state2[i] = FALSE;
 			lumi_temp2= imgHead.data[(axisY2*IMG_WIDTH + axisX2[i])];
 			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
-			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
-			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
-			lumi_temp2= imgHead.data[(axisY2*IMG_WIDTH + axisX2[i+1])];
+			lumi_temp2= imgHead.data[(axisY2*IMG_WIDTH + axisX2[i]+1)];
 			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
-			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
-			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
-			lumi_temp2= imgHead.data[(axisY2*IMG_WIDTH + axisX2[i-1])];
+			lumi_temp2= imgHead.data[(axisY2*IMG_WIDTH + axisX2[i]-1)];
 			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
-			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
-			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
 			lumi_temp2= imgHead.data[((axisY2+1)*IMG_WIDTH + axisX2[i])];
 			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
-			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
-			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
-			lumi_temp2= imgHead.data[((axisY2+1)*IMG_WIDTH + axisX2[i+1])];
+			lumi_temp2= imgHead.data[((axisY2+1)*IMG_WIDTH + axisX2[i]+1)];
 			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
-			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
-			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
-			lumi_temp2= imgHead.data[((axisY2+1)*IMG_WIDTH + axisX2[i-1])];
+			lumi_temp2= imgHead.data[((axisY2+1)*IMG_WIDTH + axisX2[i]-1)];
 			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
-			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
-			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
 			lumi_temp2= imgHead.data[((axisY2-1)*IMG_WIDTH + axisX2[i])];
 			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
-			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
-			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
-			lumi_temp2= imgHead.data[((axisY2-1)*IMG_WIDTH + axisX2[i+1])];
+			lumi_temp2= imgHead.data[((axisY2-1)*IMG_WIDTH + axisX2[i]+1)];
 			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
-			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
-			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
-			lumi_temp2= imgHead.data[((axisY2-1)*IMG_WIDTH + axisX2[i-1])];
+			lumi_temp2= imgHead.data[((axisY2-1)*IMG_WIDTH + axisX2[i]-1)];
 			if (lumi_temp2 > LUMINANCE_THRESHOLD) state2[i] = TRUE;
-			if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
-			else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
 		}
 		
 		// reconstruct value
@@ -283,14 +270,34 @@ int main(){
 		if (state2[5]) value_temp2 |= 32;
 		if (state2[6]) value_temp2 |= 64;
 		
-		// parity check
-		if (state2[0]^state2[1]^state2[2]^state2[3]^state2[4]^state2[5]^state2[6]^state2[7]^TRUE){
-			if (value_temp2!=value_prev2){
-				value_prev2 = value_temp2;
-				logfile2 << value_temp2;
-			}
-		}
-		//else logfile2 << 'X' << framenum;
+		//clock LED intensity, source1
+		lumi_temp2= imgHead.data[((axisY2-1)*IMG_WIDTH + axisX2[8])];
+		if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+		else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+		lumi_temp2= imgHead.data[((axisY2-1)*IMG_WIDTH + axisX2[8]-1)];
+		if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+		else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+		lumi_temp2= imgHead.data[((axisY2-1)*IMG_WIDTH + axisX2[8]+1)];
+		if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+		else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+		lumi_temp2= imgHead.data[((axisY2)*IMG_WIDTH + axisX2[8])];
+		if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+		else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+		lumi_temp2= imgHead.data[((axisY2)*IMG_WIDTH + axisX2[8]-1)];
+		if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+		else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+		lumi_temp2= imgHead.data[((axisY2)*IMG_WIDTH + axisX2[8]+1)];
+		if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+		else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+		lumi_temp2= imgHead.data[((axisY2+1)*IMG_WIDTH + axisX2[8])];
+		if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+		else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+		lumi_temp2= imgHead.data[((axisY2+1)*IMG_WIDTH + axisX2[8]-1)];
+		if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+		else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
+		lumi_temp2= imgHead.data[((axisY2+1)*IMG_WIDTH + axisX2[8]+1)];
+		if (lumi_temp2 > lumi_max2) lumi_max2= lumi_temp2;
+		else if (lumi_temp2 < lumi_min2) lumi_min2= lumi_temp2;
 
 		// intensity logging
 //		logintensity << int(lumi_min) << ';' << int(lumi_max) << ';' << int(lumi_min2) << ';' << int(lumi_max2) << endl;
