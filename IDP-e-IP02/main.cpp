@@ -19,13 +19,15 @@
 #endif
 #pragma comment(lib, "PDCLIB.lib")
 
+//#define OPT_SAVE 1
 #define FPS			2000
 #define SHUTTER		FPS
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	512
-#define FRAMENUM_MAX 12000
+#define FRAMENUM_MAX 24000
 #define THRESHOLD_LOGIC	80
-#define THRESHOLD_BACKGROUND 30
+#define THRESHOLD_PHASE_LOW 25
+#define THRESHOLD_PHASE_HIGH 60
 
 #define DELAY_PHASE 4000 // 1=9.9ns
 #define DELAY_FREQ 0
@@ -76,19 +78,20 @@ bool dropped;
 unsigned int delay, delay_freq, delay_phase;
 
 // self tuning position
-int axisY=453;
-int axisX[8]={320, 289, 258, 226, 196, 163, 133, 102};
+int axisY=186;
+int axisX[8]={260, 228, 199, 166, 135, 104, 73, 42};
 bool state[8];
 
-int axisY2=453;
-int axisX2[8]={321, 288, 257, 225, 194, 161, 132, 100};
+int axisY2=185;
+int axisX2[8]={260, 228, 199, 166, 135, 104, 73, 42};
 bool state2[8];
 
 char value_temp[2];
 unsigned char lumi_temp[2], lumi_max[2], lumi_min[2];
 // for PLL
-char phase_current[2], phase_prev[2];
-unsigned int phase_frame_prev[2], phase_frame_next[2];
+unsigned char pll_intensity[10]={255, 255, 255, 255, 255, 255, 255, 255, 255, 255};
+char pll_state; // 0=waiting for low; 1=waiting for high
+float pll_frame_prev, pll_frame_current, pll_frame_next;
 
 unsigned char max_global, min_global, max_current, min_current, clk_intensity;
 bool state_rise, state_fall;
@@ -134,11 +137,13 @@ int main(){
 	int framenum;
 	imgHead			= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
 	// buffered images
-	//img = new cv::Mat [FRAMENUM_MAX];
-	//for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
-	//	imgHead = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
-	//}
-	
+#ifdef OPT_SAVE
+	img = new cv::Mat [FRAMENUM_MAX];
+	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
+		imgHead = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
+	}
+#endif
+
 	unsigned long	nFrameNo, oldFrameNo = 0;
 	void			*pBaseAddress;
 	
@@ -163,9 +168,11 @@ int main(){
 		//idpUtil.getHeadData(imgHead.data, 1);
 		idpUtil.getHeadData(imgHead.data, 0);
 		
+#ifdef OPT_SAVE
 		//for later saving
-		//imgHead.copyTo(img[framenum]);
-		
+		imgHead.copyTo(img[framenum]);
+#endif
+
 		// for source1
 		// current character being read
 		// (even) parity check
@@ -273,6 +280,7 @@ int main(){
 		if (state2[5]) value_temp[1] |= 32;
 		if (state2[6]) value_temp[1] |= 64;
 		
+		/*
 		//clock LED intensity, source2
 		lumi_temp[1]= imgHead.data[((axisY2-1)*IMG_WIDTH + axisX2[8])];
 		if (lumi_temp[1] > lumi_max[1]) lumi_max[1]= lumi_temp[1];
@@ -301,6 +309,7 @@ int main(){
 		lumi_temp[1]= imgHead.data[((axisY2+1)*IMG_WIDTH + axisX2[8]+1)];
 		if (lumi_temp[1] > lumi_max[1]) lumi_max[1]= lumi_temp[1];
 		else if (lumi_temp[1] < lumi_min[1]) lumi_min[1]= lumi_temp[1];
+		*/
 
 		// intensity logging
 		//logintensity << int(lumi_min[0]) << ';' << int(lumi_max[0]) << ';' << int(lumi_min[1]) << ';' << int(lumi_max[1]) << endl;
@@ -309,105 +318,43 @@ int main(){
 		// result logging
 		logfile << value_temp[0];
 		logfile2 << value_temp[1];
+		if (!(framenum%1000)) logfile << endl << 'q' <<framenum << endl;
 
-		// variable frequency using frame throttling, with drops
-		if (dropped){
-			dropped= FALSE;
-			logintensity << 'D' << framenum << endl;
+		// silly PLL, based on low logic intensity, source1
+		if ((pll_intensity[0]<THRESHOLD_PHASE_LOW) && (pll_intensity[1]<THRESHOLD_PHASE_LOW) &&\
+			(pll_intensity[2]<THRESHOLD_PHASE_LOW) && (pll_intensity[3]<THRESHOLD_PHASE_LOW) &&\
+			(pll_intensity[4]<THRESHOLD_PHASE_LOW) && (pll_intensity[5]<THRESHOLD_PHASE_LOW) &&\
+			(pll_intensity[6]<THRESHOLD_PHASE_LOW) && (pll_intensity[5]<THRESHOLD_PHASE_LOW) &&\
+			(pll_intensity[8]<THRESHOLD_PHASE_LOW) && (pll_intensity[9]<THRESHOLD_PHASE_LOW) &&\
+			(lumi_min[0]<THRESHOLD_PHASE_LOW) && (pll_state== 0)){
+				pll_state= 1; // now we're waiting for high 'low'
+				pll_frame_prev= pll_frame_current;
+				pll_frame_current= framenum;
+				pll_frame_next= pll_frame_current + pll_frame_current - pll_frame_prev;
+				logfile << endl << 'z' << framenum << endl;
 		}
-		else {
-			delay += DELAY_FREQ;
-			if (delay >= DELAY_MAX){
-				dropped= TRUE;
-				// you may drop the frame
-				delay -= DELAY_MAX;
-			}
-		}	
-		idpConf.writeRegister(0, 0xb4, delay, 0);
-				
-		/*
-		// block milestones, introduce phase shift
-		if (blocknum== DELAY_BLOCK){ // new block
-			std::cout << "mile" <<framenum << endl; 
-			blocknum=0;
-			logfile << 'B';
-			logfile2 << 'B';
-			logintensity << 'B' << endl;
-		//	idpConf.writeRegister(0, 0xb4, DELAY_PHASE, 0);
-		}		
-		blocknum++;
-		*/
+		if ((lumi_min[0]>THRESHOLD_PHASE_HIGH) && (pll_state== 1)){
+				pll_state= 0; // waiting for another low 'low' segement
+				logfile << endl << 'q' << framenum << endl;
+		}
+		pll_intensity[0]= pll_intensity[1];
+		pll_intensity[1]= pll_intensity[2];
+		pll_intensity[2]= pll_intensity[3];
+		pll_intensity[3]= pll_intensity[4];
+		pll_intensity[4]= pll_intensity[5];
+		pll_intensity[5]= pll_intensity[6];
+		pll_intensity[6]= pll_intensity[7];
+		pll_intensity[7]= pll_intensity[8];
+		pll_intensity[8]= pll_intensity[9];
+		pll_intensity[9]= lumi_min[0];
 
-		// pha
-		/*
-		// dummy pll function here
-		clk_intensity= imgHead.data[(axisY*IMG_WIDTH + axisX[7])];
-		if (clk_intensity > max_current){
-			max_current= clk_intensity;
-			state_rise= TRUE;
-		}
-		if (clk_intensity < min_current){
-			min_current= clk_intensity;
-			state_fall= TRUE;
-		}
-		if (state_rise && state_fall){
-			if ((max_current-min_current) >= (max_global-min_global)){
-				max_global= max_current;
-				min_global= min_current;
-				min_current= 255;
-				max_current= 0;
-				delay += DELAY_UNIT;
-			}
-			else {
-				delay = delay - (3*DELAY_UNIT);
-				if (delay<0) delay=0;
-				max_global= 0;
-				min_global= 255;
-				max_current= 0;
-				min_current= 255;
-			}
-		}
-		// adjust freq and phase accordingly
-		*/
-		
-		/*
-		// line buffering, 50% duty cycle
-		if (state == 0){ // if waiting for char
-			state= 1;
-			logfile << char(value_temp[0]) << endl;
-			// read new char
-			// redo buffer from the front on CR, otherwise continue buffer
-			if (value_temp[0]==13){
-				buffer[index_char]= 0;
-				//str.assign (buffer,index_char);
-				//logfile << buffer << endl;
-				strcpy(buffer,"");
-				index_char= 0;
-				// read complete line here, flush buffer
-			} else if((value_temp[0] != value_current) && (value_temp[0])){ // new char read
-				//logfile << framenum << " newly reads " << char(value_temp[0]) << '(' << int(value_temp[0]) << ')' << endl;
-				buffer[index_char] = value_temp[0];
-				value_current = value_temp[0];
-				index_char++;
+		// delay here	
+		//if (pll_frame_prev!=0.0){}
+		//idpConf.writeRegister(0, 0xb4, delay, 0);
 				
-				// cout << framenum << " reads " << value_current << endl;
-				
-			}
-		} else {
-			if (value_temp[0] == 0 ) state= 0; // sync zero frame
-			else if (value_temp[0] == value_current) state= 0; // repetition frame
-			else if(value_temp[0] != value_current){ // read new char, might be unstable here
-				buffer[index_char] = value_temp[0];
-				value_current = value_temp[0];
-				index_char++;
-				state=0;
-			}
-			//cout << framenum << " reads zero" << endl;
-		}
-		*/
 	}
 
-	std:cout << "start saving" << endl;
+	cout << "start saving" << endl;
 
 	logfile << endl << "stop  " << GetTickCount() << endl;
 	logfile << "------------" << endl;;
@@ -423,7 +370,8 @@ int main(){
 	compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
 	compression_params.push_back(9);
 
-	/*for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
+#ifdef OPT_SAVE
+	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		try {
 			sprintf(filename,"%4.4d.jpg",framenum);
 			// for (int i=0; i<IMG_WIDTH; i++) imgHead.data[axisY*IMG_WIDTH + i] = 200;
@@ -448,8 +396,9 @@ int main(){
 			int(imgHead.data[axisY*IMG_WIDTH + axisX[7]]) << ';';
 		logfile << endl;
 		logfile.close();
-		* /  //nested commenting sucks
-	}*/
+		*/  //nested commenting sucks
+	}
+#endif
 	
 	if (idpConf.closeDevice() == PDC_FAILED) return 1;
 	destroyAllWindows();
