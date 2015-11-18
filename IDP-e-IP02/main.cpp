@@ -19,12 +19,16 @@
 #endif
 #pragma comment(lib, "PDCLIB.lib")
 
-//#define OPT_SAVE 1
 #define FPS			2000
 #define SHUTTER		FPS
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	512
+//#define OPT_SAVE 
+#ifdef OPT_SAVE
+#define FRAMENUM_MAX 400
+#else
 #define FRAMENUM_MAX 24000
+#endif
 #define THRESHOLD_LOGIC	80
 #define THRESHOLD_PHASE_LOW 25
 #define THRESHOLD_PHASE_HIGH 60
@@ -78,12 +82,12 @@ bool dropped;
 unsigned int delay, delay_freq, delay_phase;
 
 // self tuning position
-int axisY=186;
-int axisX[8]={260, 228, 199, 166, 135, 104, 73, 42};
+int axisY=193;
+int axisX[8]={252, 220, 191, 158, 127, 96, 65, 35};
 bool state[8];
 
-int axisY2=185;
-int axisX2[8]={260, 228, 199, 166, 135, 104, 73, 42};
+int axisY2=194;
+int axisX2[8]={252, 220, 191, 158, 127, 96, 65, 35};
 bool state2[8];
 
 char value_temp[2];
@@ -153,6 +157,8 @@ int main(){
 	logfile2 << "start " << DELAY_FREQ << " " << GetTickCount() << endl;
 	logintensity.open("log-intensity.txt", ios::app);
 	logintensity << "start " << DELAY_FREQ << " " << GetTickCount() << endl;
+	idpConf.writeRegister(0, 0xb4, 0, 0);
+	idpConf.writeRegister(0, 0xb4, 0, 0);
 	idpConf.writeRegister(0, 0xb4, 0, 0);
 	
 	// state=0;
@@ -318,8 +324,9 @@ int main(){
 		// result logging
 		logfile << value_temp[0];
 		logfile2 << value_temp[1];
-		if (!(framenum%1000)) logfile << endl << 'q' <<framenum << endl;
+		if (!(framenum%500)) logfile << endl << 'q' <<framenum << endl;
 
+		/*
 		// silly PLL, based on low logic intensity, source1
 		if ((pll_intensity[0]<THRESHOLD_PHASE_LOW) && (pll_intensity[1]<THRESHOLD_PHASE_LOW) &&\
 			(pll_intensity[2]<THRESHOLD_PHASE_LOW) && (pll_intensity[3]<THRESHOLD_PHASE_LOW) &&\
@@ -351,8 +358,21 @@ int main(){
 		// delay here	
 		//if (pll_frame_prev!=0.0){}
 		//idpConf.writeRegister(0, 0xb4, delay, 0);
-				
-	}
+		*/
+
+		// variable frequency using frame throttling, with drops
+		if (dropped){
+			dropped= FALSE;
+			logfile << endl << 'D' << framenum << endl;
+		}
+		delay += DELAY_FREQ;
+		if (delay >= DELAY_MAX){
+			dropped= TRUE;				// you may drop the frame
+			delay -= DELAY_MAX;
+		}
+		idpConf.writeRegister(0, 0xb4, delay, 0);
+		
+	} // framenum
 
 	cout << "start saving" << endl;
 
