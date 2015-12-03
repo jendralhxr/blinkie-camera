@@ -23,21 +23,23 @@
 #define SHUTTER		FPS
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	512
+
 //#define OPT_SAVE 
 #ifdef OPT_SAVE
 #define FRAMENUM_MAX 400
 #else
 #define FRAMENUM_MAX 24000
 #endif
-#define THRESHOLD_LOGIC	80
-#define THRESHOLD_PHASE_LOW 25
-#define THRESHOLD_PHASE_HIGH 60
+#define THRESHOLD_LOGIC	100
+#define THRESHOLD_LO 60
+#define THRESHOLD_HI 150
 
 #define DELAY_PHASE 4000 // 1=9.9ns
 #define DELAY_FREQ 0
 #define DELAY_BLOCK 100 // frames
 #define DELAY_BLOCK_CONTRAST 10 // preferable to be even number 
 #define DELAY_MAX 50200 // maximum delay unit on 2k fps is 50505 (500us/9.9ns)
+#define SEGMENT_COUNT 5 // ratio of sync period to readable segment length
 
 using namespace IDPExpress;
 using namespace mytimer;
@@ -81,24 +83,21 @@ char filename[20];
 bool dropped;
 unsigned int delay, delay_freq, delay_phase;
 
-// self tuning position
-int axisY=193;
-int axisX[8]={252, 220, 191, 158, 127, 96, 65, 35};
-bool state[8];
-
-int axisY2=194;
-int axisX2[8]={252, 220, 191, 158, 127, 96, 65, 35};
-bool state2[8];
-
 char value_temp[2];
 unsigned char lumi_temp[2], lumi_max[2], lumi_min[2];
-// for PLL
-unsigned char pll_intensity[10]={255, 255, 255, 255, 255, 255, 255, 255, 255, 255};
-char pll_state; // 0=waiting for low; 1=waiting for high
-float pll_frame_prev, pll_frame_current, pll_frame_next;
+// self-tuning position
+int axisY=246;
+int axisX[8]={466, 435, 403, 372, 342, 310, 279, 248};
+bool state[8];
+int axisY2=245;
+int axisX2[8]={466, 435, 403, 372, 342, 310, 279, 248};
+bool state2[8];
 
-unsigned char max_global, min_global, max_current, min_current, clk_intensity;
-bool state_rise, state_fall;
+// for PLL
+float segment_start, segment_end, segment_period;
+char segment_sequence; // consecutive 8 frames marker
+bool clk_cur, clk_prev;
+bool sync_state_cur, sync_state_prev;
 
 int main(){
 	if (idpConf.init()									== PDC_FAILED) return 1;
@@ -138,7 +137,7 @@ int main(){
 	else idpConf.writeRegister(0, ADDR_THRE_HSV_CAM2, 0x00ff);
 
 	// mess start here
-	int framenum;
+	unsigned int framenum;
 	imgHead			= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
 	// buffered images
 #ifdef OPT_SAVE
@@ -151,11 +150,11 @@ int main(){
 	unsigned long	nFrameNo, oldFrameNo = 0;
 	void			*pBaseAddress;
 	
-	logfile.open("log-source1.txt", ios::app);
+	logfile.open("log-source1.txt");
 	logfile << "start " << DELAY_FREQ << " " << GetTickCount() <<endl;
-	logfile2.open("log-source2.txt", ios::app);
+	logfile2.open("log-source2.txt");
 	logfile2 << "start " << DELAY_FREQ << " " << GetTickCount() << endl;
-	logintensity.open("log-intensity.txt", ios::app);
+	logintensity.open("log-intensity.txt");
 	logintensity << "start " << DELAY_FREQ << " " << GetTickCount() << endl;
 	idpConf.writeRegister(0, 0xb4, 0, 0);
 	idpConf.writeRegister(0, 0xb4, 0, 0);
@@ -219,35 +218,6 @@ int main(){
 		if (state[5]) value_temp[0] |= 32;
 		if (state[6]) value_temp[0] |= 64;
 		
-		//clock LED intensity, source1
-		lumi_temp[0]= imgHead.data[((axisY-1)*IMG_WIDTH + axisX[8])];
-		if (lumi_temp[0] > lumi_max[0]) lumi_max[0]= lumi_temp[0];
-		else if (lumi_temp[0] < lumi_min[0]) lumi_min[0]= lumi_temp[0];
-		lumi_temp[0]= imgHead.data[((axisY-1)*IMG_WIDTH + axisX[8]-1)];
-		if (lumi_temp[0] > lumi_max[0]) lumi_max[0]= lumi_temp[0];
-		else if (lumi_temp[0] < lumi_min[0]) lumi_min[0]= lumi_temp[0];
-		lumi_temp[0]= imgHead.data[((axisY-1)*IMG_WIDTH + axisX[8]+1)];
-		if (lumi_temp[0] > lumi_max[0]) lumi_max[0]= lumi_temp[0];
-		else if (lumi_temp[0] < lumi_min[0]) lumi_min[0]= lumi_temp[0];
-		lumi_temp[0]= imgHead.data[((axisY)*IMG_WIDTH + axisX[8])];
-		if (lumi_temp[0] > lumi_max[0]) lumi_max[0]= lumi_temp[0];
-		else if (lumi_temp[0] < lumi_min[0]) lumi_min[0]= lumi_temp[0];
-		lumi_temp[0]= imgHead.data[((axisY)*IMG_WIDTH + axisX[8]-1)];
-		if (lumi_temp[0] > lumi_max[0]) lumi_max[0]= lumi_temp[0];
-		else if (lumi_temp[0] < lumi_min[0]) lumi_min[0]= lumi_temp[0];
-		lumi_temp[0]= imgHead.data[((axisY)*IMG_WIDTH + axisX[8]+1)];
-		if (lumi_temp[0] > lumi_max[0]) lumi_max[0]= lumi_temp[0];
-		else if (lumi_temp[0] < lumi_min[0]) lumi_min[0]= lumi_temp[0];
-		lumi_temp[0]= imgHead.data[((axisY+1)*IMG_WIDTH + axisX[8])];
-		if (lumi_temp[0] > lumi_max[0]) lumi_max[0]= lumi_temp[0];
-		else if (lumi_temp[0] < lumi_min[0]) lumi_min[0]= lumi_temp[0];
-		lumi_temp[0]= imgHead.data[((axisY+1)*IMG_WIDTH + axisX[8]-1)];
-		if (lumi_temp[0] > lumi_max[0]) lumi_max[0]= lumi_temp[0];
-		else if (lumi_temp[0] < lumi_min[0]) lumi_min[0]= lumi_temp[0];
-		lumi_temp[0]= imgHead.data[((axisY+1)*IMG_WIDTH + axisX[8]+1)];
-		if (lumi_temp[0] > lumi_max[0]) lumi_max[0]= lumi_temp[0];
-		else if (lumi_temp[0] < lumi_min[0]) lumi_min[0]= lumi_temp[0];
-
 		// for source2
 		// current character being read
 		// (even) parity check
@@ -275,9 +245,11 @@ int main(){
 			if (lumi_temp[1] > THRESHOLD_LOGIC) state2[i] = TRUE;
 			lumi_temp[1]= imgHead.data[((axisY2-1)*IMG_WIDTH + axisX2[i]-1)];
 			if (lumi_temp[1] > THRESHOLD_LOGIC) state2[i] = TRUE;
+			//if (lumi_temp[1] > lumi_max[1]) lumi_max[1]= lumi_temp[1];
+			//else if (lumi_temp[1] < lumi_min[1]) lumi_min[1]= lumi_temp[1];
 		}
 		
-		// reconstruct value
+		// reconstruct value, source2
 		if (state2[0]) value_temp[1] |= 1;
 		if (state2[1]) value_temp[1] |= 2;
 		if (state2[2]) value_temp[1] |= 4;
@@ -286,92 +258,74 @@ int main(){
 		if (state2[5]) value_temp[1] |= 32;
 		if (state2[6]) value_temp[1] |= 64;
 		
-		/*
-		//clock LED intensity, source2
-		lumi_temp[1]= imgHead.data[((axisY2-1)*IMG_WIDTH + axisX2[8])];
-		if (lumi_temp[1] > lumi_max[1]) lumi_max[1]= lumi_temp[1];
-		else if (lumi_temp[1] < lumi_min[1]) lumi_min[1]= lumi_temp[1];
-		lumi_temp[1]= imgHead.data[((axisY2-1)*IMG_WIDTH + axisX2[8]-1)];
-		if (lumi_temp[1] > lumi_max[1]) lumi_max[1]= lumi_temp[1];
-		else if (lumi_temp[1] < lumi_min[1]) lumi_min[1]= lumi_temp[1];
-		lumi_temp[1]= imgHead.data[((axisY2-1)*IMG_WIDTH + axisX2[8]+1)];
-		if (lumi_temp[1] > lumi_max[1]) lumi_max[1]= lumi_temp[1];
-		else if (lumi_temp[1] < lumi_min[1]) lumi_min[1]= lumi_temp[1];
-		lumi_temp[1]= imgHead.data[((axisY2)*IMG_WIDTH + axisX2[8])];
-		if (lumi_temp[1] > lumi_max[1]) lumi_max[1]= lumi_temp[1];
-		else if (lumi_temp[1] < lumi_min[1]) lumi_min[1]= lumi_temp[1];
-		lumi_temp[1]= imgHead.data[((axisY2)*IMG_WIDTH + axisX2[8]-1)];
-		if (lumi_temp[1] > lumi_max[1]) lumi_max[1]= lumi_temp[1];
-		else if (lumi_temp[1] < lumi_min[1]) lumi_min[1]= lumi_temp[1];
-		lumi_temp[1]= imgHead.data[((axisY2)*IMG_WIDTH + axisX2[8]+1)];
-		if (lumi_temp[1] > lumi_max[1]) lumi_max[1]= lumi_temp[1];
-		else if (lumi_temp[1] < lumi_min[1]) lumi_min[1]= lumi_temp[1];
-		lumi_temp[1]= imgHead.data[((axisY2+1)*IMG_WIDTH + axisX2[8])];
-		if (lumi_temp[1] > lumi_max[1]) lumi_max[1]= lumi_temp[1];
-		else if (lumi_temp[1] < lumi_min[1]) lumi_min[1]= lumi_temp[1];
-		lumi_temp[1]= imgHead.data[((axisY2+1)*IMG_WIDTH + axisX2[8]-1)];
-		if (lumi_temp[1] > lumi_max[1]) lumi_max[1]= lumi_temp[1];
-		else if (lumi_temp[1] < lumi_min[1]) lumi_min[1]= lumi_temp[1];
-		lumi_temp[1]= imgHead.data[((axisY2+1)*IMG_WIDTH + axisX2[8]+1)];
-		if (lumi_temp[1] > lumi_max[1]) lumi_max[1]= lumi_temp[1];
-		else if (lumi_temp[1] < lumi_min[1]) lumi_min[1]= lumi_temp[1];
-		*/
+		//clock LED intensity, source1
+		lumi_temp[0]= ( imgHead.data[(axisY-1)*IMG_WIDTH + axisX[8]]\
+		+ imgHead.data[(axisY-1)*IMG_WIDTH + axisX[8]-1]\
+		+ imgHead.data[(axisY-1)*IMG_WIDTH + axisX[8]+1]\
+		+ imgHead.data[(axisY)*IMG_WIDTH + axisX[8]]\
+		+ imgHead.data[(axisY)*IMG_WIDTH + axisX[8]-1]\
+		+ imgHead.data[(axisY)*IMG_WIDTH + axisX[8]+1]\
+		+ imgHead.data[(axisY+1)*IMG_WIDTH + axisX[8]]\
+		+ imgHead.data[(axisY+1)*IMG_WIDTH + axisX[8]-1]\
+		+ imgHead.data[(axisY+1)*IMG_WIDTH + axisX[8]+1] )/8;
+
+		// yet another silly PLL, based on readable segment, source1
+		// detecting readable segment
+		segment_sequence = segment_sequence <<1;
+		sync_state_cur= FALSE;
+		if (lumi_temp[0] < THRESHOLD_LO) clk_cur= FALSE;
+		if (lumi_temp[0] > THRESHOLD_HI) clk_cur= TRUE;
+		if (clk_cur ^ clk_prev)	segment_sequence |= 1;
+		if (segment_sequence && 0xFF) sync_state_cur=TRUE;
+
+		// deciding readable segment period, start and end frames 	
+		if ((sync_state_cur==TRUE) && (sync_state_prev==FALSE) && (segment_sequence==0xFF)){
+			if ((segment_start==0) && (segment_end==0)) segment_start= framenum;
+			else {
+				segment_end= framenum;
+				segment_period= segment_end - segment_start;
+				segment_start= framenum;
+				segment_end= framenum + segment_period;
+			}
+			logfile << endl << "Seg" << int(segment_start) << ';' << int(segment_end) << ';' << int(segment_period) << ';' << endl;
+		}	
+
+		// applying phase delay
+		delay_phase= int((framenum-segment_start)/(segment_period/SEGMENT_COUNT));
+		switch(delay_phase){
+		case 0:
+	//		idpConf.writeRegister(0, 0xb4, 0, 0);
+			break;
+		case 1:
+	//		idpConf.writeRegister(0, 0xb4, 10100, 0);
+			break;
+		case 2:
+	//		idpConf.writeRegister(0, 0xb4, 20200, 0);
+			break;
+		case 3:
+	//		idpConf.writeRegister(0, 0xb4, 30300, 0);
+			break;
+		case 4:
+	//		idpConf.writeRegister(0, 0xb4, 40400, 0);
+			break;
+		default:
+			idpConf.writeRegister(0, 0xb4, 0, 0);
+			break;
+		}
 
 		// intensity logging
 		//logintensity << int(lumi_min[0]) << ';' << int(lumi_max[0]) << ';' << int(lumi_min[1]) << ';' << int(lumi_max[1]) << endl;
-		logintensity << int(lumi_min[0]) << ';' << int(lumi_max[0]) << endl;
+		//logintensity << int(lumi_min[0]) << ';' << int(lumi_max[0]) << ';' << int(lumi_temp[0]) <<';' << delay_phase << endl;
+		logintensity << int(lumi_temp[0]) << ';' << clk_cur <<';'<< std::hex << short int(segment_sequence&0xFF) << std::dec <<';' << delay_phase << endl;
 
 		// result logging
 		logfile << value_temp[0];
 		logfile2 << value_temp[1];
 		if (!(framenum%500)) logfile << endl << 'q' <<framenum << endl;
-
-		/*
-		// silly PLL, based on low logic intensity, source1
-		if ((pll_intensity[0]<THRESHOLD_PHASE_LOW) && (pll_intensity[1]<THRESHOLD_PHASE_LOW) &&\
-			(pll_intensity[2]<THRESHOLD_PHASE_LOW) && (pll_intensity[3]<THRESHOLD_PHASE_LOW) &&\
-			(pll_intensity[4]<THRESHOLD_PHASE_LOW) && (pll_intensity[5]<THRESHOLD_PHASE_LOW) &&\
-			(pll_intensity[6]<THRESHOLD_PHASE_LOW) && (pll_intensity[5]<THRESHOLD_PHASE_LOW) &&\
-			(pll_intensity[8]<THRESHOLD_PHASE_LOW) && (pll_intensity[9]<THRESHOLD_PHASE_LOW) &&\
-			(lumi_min[0]<THRESHOLD_PHASE_LOW) && (pll_state== 0)){
-				pll_state= 1; // now we're waiting for high 'low'
-				pll_frame_prev= pll_frame_current;
-				pll_frame_current= framenum;
-				pll_frame_next= pll_frame_current + pll_frame_current - pll_frame_prev;
-				logfile << endl << 'z' << framenum << endl;
-		}
-		if ((lumi_min[0]>THRESHOLD_PHASE_HIGH) && (pll_state== 1)){
-				pll_state= 0; // waiting for another low 'low' segement
-				logfile << endl << 'q' << framenum << endl;
-		}
-		pll_intensity[0]= pll_intensity[1];
-		pll_intensity[1]= pll_intensity[2];
-		pll_intensity[2]= pll_intensity[3];
-		pll_intensity[3]= pll_intensity[4];
-		pll_intensity[4]= pll_intensity[5];
-		pll_intensity[5]= pll_intensity[6];
-		pll_intensity[6]= pll_intensity[7];
-		pll_intensity[7]= pll_intensity[8];
-		pll_intensity[8]= pll_intensity[9];
-		pll_intensity[9]= lumi_min[0];
-
-		// delay here	
-		//if (pll_frame_prev!=0.0){}
-		//idpConf.writeRegister(0, 0xb4, delay, 0);
-		*/
-
-		// variable frequency using frame throttling, with drops
-		if (dropped){
-			dropped= FALSE;
-			logfile << endl << 'D' << framenum << endl;
-		}
-		delay += DELAY_FREQ;
-		if (delay >= DELAY_MAX){
-			dropped= TRUE;				// you may drop the frame
-			delay -= DELAY_MAX;
-		}
-		idpConf.writeRegister(0, 0xb4, delay, 0);
 		
+		clk_prev= clk_cur;
+		sync_state_prev= sync_state_cur;
+
 	} // framenum
 
 	cout << "start saving" << endl;
