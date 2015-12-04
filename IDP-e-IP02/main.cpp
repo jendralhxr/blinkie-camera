@@ -89,15 +89,14 @@ unsigned char lumi_temp[2], lumi_max[2], lumi_min[2];
 int axisY=246;
 int axisX[8]={466, 435, 403, 372, 342, 310, 279, 248};
 bool state[8];
-int axisY2=245;
+int axisY2=246;
 int axisX2[8]={466, 435, 403, 372, 342, 310, 279, 248};
 bool state2[8];
 
 // for PLL
-float segment_start, segment_end, segment_period;
+unsigned int segment_start, segment_end, segment_iter, segment_period, segment_period_temp;
 char segment_sequence; // consecutive 8 frames marker
-bool clk_cur, clk_prev;
-bool sync_state_cur, sync_state_prev;
+bool sync_state_cur, sync_state_prev[7];
 
 int main(){
 	if (idpConf.init()									== PDC_FAILED) return 1;
@@ -156,11 +155,8 @@ int main(){
 	logfile2 << "start " << DELAY_FREQ << " " << GetTickCount() << endl;
 	logintensity.open("log-intensity.txt");
 	logintensity << "start " << DELAY_FREQ << " " << GetTickCount() << endl;
-	idpConf.writeRegister(0, 0xb4, 0, 0);
-	idpConf.writeRegister(0, 0xb4, 0, 0);
-	idpConf.writeRegister(0, 0xb4, 0, 0);
+	idpConf.writeRegister(0, 0xb4, 0, 0);  // just to be safe
 	
-	// state=0;
 	//while(1){
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
 	waitframe:
@@ -168,7 +164,6 @@ int main(){
 		if (nFrameNo == oldFrameNo) goto waitframe;
 		oldFrameNo = nFrameNo;
 		//logfile << framenum << "--" << nFrameNo << endl;
-		
 		idpUtil.setBase((UINT8 *)pBaseAddress -8);
 		//idpUtil.getHeadData(imgHead.data, 1);
 		idpUtil.getHeadData(imgHead.data, 0);
@@ -180,12 +175,11 @@ int main(){
 
 		// for source1
 		// current character being read
-		// (even) parity check
 		value_temp[0]= 0;
 		lumi_max[0]= 0;
 		lumi_min[0]= 255;
 		
-		for (int i=0; i<7; i++){
+		for (int i=0; i<8; i++){
 			state[i] = FALSE;
 			lumi_temp[0]= imgHead.data[(axisY*IMG_WIDTH + axisX[i])];
 			if (lumi_temp[0] > THRESHOLD_LOGIC) state[i] = TRUE;
@@ -205,8 +199,8 @@ int main(){
 			if (lumi_temp[0] > THRESHOLD_LOGIC) state[i] = TRUE;
 			lumi_temp[0]= imgHead.data[((axisY-1)*IMG_WIDTH + axisX[i]-1)];
 			if (lumi_temp[0] > THRESHOLD_LOGIC) state[i] = TRUE;
-			if (lumi_temp[0] > lumi_max[0]) lumi_max[0]= lumi_temp[0];
-			else if (lumi_temp[0] < lumi_min[0]) lumi_min[0]= lumi_temp[0];
+			//if (lumi_temp[0] > lumi_max[0]) lumi_max[0]= lumi_temp[0];
+			//else if (lumi_temp[0] < lumi_min[0]) lumi_min[0]= lumi_temp[0];
  		}
 
 		// reconstuct value
@@ -220,12 +214,11 @@ int main(){
 		
 		// for source2
 		// current character being read
-		// (even) parity check
 		value_temp[1]= 0;
 		lumi_max[1]= 0;
 		lumi_min[1]= 255;
 
-		for (int i=0; i<7; i++){
+		for (int i=0; i<8; i++){
 			state2[i] = FALSE;
 			lumi_temp[1]= imgHead.data[(axisY2*IMG_WIDTH + axisX2[i])];
 			if (lumi_temp[1] > THRESHOLD_LOGIC) state2[i] = TRUE;
@@ -258,32 +251,26 @@ int main(){
 		if (state2[5]) value_temp[1] |= 32;
 		if (state2[6]) value_temp[1] |= 64;
 		
-		//clock LED intensity, source1
-		lumi_temp[0]= ( imgHead.data[(axisY-1)*IMG_WIDTH + axisX[8]]\
-		+ imgHead.data[(axisY-1)*IMG_WIDTH + axisX[8]-1]\
-		+ imgHead.data[(axisY-1)*IMG_WIDTH + axisX[8]+1]\
-		+ imgHead.data[(axisY)*IMG_WIDTH + axisX[8]]\
-		+ imgHead.data[(axisY)*IMG_WIDTH + axisX[8]-1]\
-		+ imgHead.data[(axisY)*IMG_WIDTH + axisX[8]+1]\
-		+ imgHead.data[(axisY+1)*IMG_WIDTH + axisX[8]]\
-		+ imgHead.data[(axisY+1)*IMG_WIDTH + axisX[8]-1]\
-		+ imgHead.data[(axisY+1)*IMG_WIDTH + axisX[8]+1] )/8;
-
 		// yet another silly PLL, based on readable segment, source1
 		// detecting readable segment
 		segment_sequence = segment_sequence <<1;
 		sync_state_cur= FALSE;
-		if (lumi_temp[0] < THRESHOLD_LO) clk_cur= FALSE;
-		if (lumi_temp[0] > THRESHOLD_HI) clk_cur= TRUE;
-		if (clk_cur ^ clk_prev)	segment_sequence |= 1;
-		if (segment_sequence && 0xFF) sync_state_cur=TRUE;
-
+		if (state[0]^state[1]^state[2]^state[3]^state[4]^state[5]^state[6]^state[7]^TRUE){
+			logfile <<value_temp[0];
+			segment_sequence |= 1;
+			}
+		if ((segment_sequence&0xFF)==0xFF){ // just what??
+		sync_state_cur=TRUE;
+		}
 		// deciding readable segment period, start and end frames 	
-		if ((sync_state_cur==TRUE) && (sync_state_prev==FALSE) && (segment_sequence==0xFF)){
+		if ((sync_state_cur==TRUE) && (sync_state_prev[0]==TRUE) && (sync_state_prev[1]==TRUE) && \
+			(sync_state_prev[2]==TRUE) && (sync_state_prev[3]==TRUE) && (sync_state_prev[4]==TRUE) &&
+			(sync_state_prev[5]=TRUE) && (sync_state_prev[6]==FALSE)){
 			if ((segment_start==0) && (segment_end==0)) segment_start= framenum;
 			else {
 				segment_end= framenum;
-				segment_period= segment_end - segment_start;
+				segment_period_temp= segment_end - segment_start;
+				if (segment_period_temp>segment_period) segment_period=segment_period_temp;
 				segment_start= framenum;
 				segment_end= framenum + segment_period;
 			}
@@ -291,24 +278,23 @@ int main(){
 		}	
 
 		// applying phase delay
-		delay_phase= int((framenum-segment_start)/(segment_period/SEGMENT_COUNT));
+		segment_iter= framenum-segment_start;
+		if (segment_iter>segment_period) delay_phase= 0;
+		else if (segment_period) delay_phase= int((framenum-segment_start)*SEGMENT_COUNT/segment_period);
 		switch(delay_phase){
-		case 0:
-	//		idpConf.writeRegister(0, 0xb4, 0, 0);
-			break;
 		case 1:
-	//		idpConf.writeRegister(0, 0xb4, 10100, 0);
+			idpConf.writeRegister(0, 0xb4, 10100, 0);
 			break;
 		case 2:
-	//		idpConf.writeRegister(0, 0xb4, 20200, 0);
+			idpConf.writeRegister(0, 0xb4, 20200, 0);
 			break;
 		case 3:
-	//		idpConf.writeRegister(0, 0xb4, 30300, 0);
+			idpConf.writeRegister(0, 0xb4, 30300, 0);
 			break;
 		case 4:
-	//		idpConf.writeRegister(0, 0xb4, 40400, 0);
+			idpConf.writeRegister(0, 0xb4, 40400, 0);
 			break;
-		default:
+		default: // including 0
 			idpConf.writeRegister(0, 0xb4, 0, 0);
 			break;
 		}
@@ -316,16 +302,20 @@ int main(){
 		// intensity logging
 		//logintensity << int(lumi_min[0]) << ';' << int(lumi_max[0]) << ';' << int(lumi_min[1]) << ';' << int(lumi_max[1]) << endl;
 		//logintensity << int(lumi_min[0]) << ';' << int(lumi_max[0]) << ';' << int(lumi_temp[0]) <<';' << delay_phase << endl;
-		logintensity << int(lumi_temp[0]) << ';' << clk_cur <<';'<< std::hex << short int(segment_sequence&0xFF) << std::dec <<';' << delay_phase << endl;
-
+		logintensity << int(lumi_temp[0]) <<';'<< std::hex << short int(segment_sequence&0xFF) << std::dec << ';' << sync_state_cur << ';' << delay_phase << ';' << int(framenum-segment_start) << '/' << segment_period << endl;
 		// result logging
-		logfile << value_temp[0];
+		//logfile << value_temp[0];
 		logfile2 << value_temp[1];
 		if (!(framenum%500)) logfile << endl << 'q' <<framenum << endl;
 		
-		clk_prev= clk_cur;
-		sync_state_prev= sync_state_cur;
-
+		sync_state_prev[6]= sync_state_prev[5];
+		sync_state_prev[5]= sync_state_prev[4];
+		sync_state_prev[4]= sync_state_prev[3];
+		sync_state_prev[3]= sync_state_prev[2];
+		sync_state_prev[2]= sync_state_prev[1];
+		sync_state_prev[1]= sync_state_prev[0];
+		sync_state_prev[0]= sync_state_cur;
+		
 	} // framenum
 
 	cout << "start saving" << endl;
@@ -376,5 +366,5 @@ int main(){
 	
 	if (idpConf.closeDevice() == PDC_FAILED) return 1;
 	destroyAllWindows();
-	return 0;
+	return(0);
 	}
