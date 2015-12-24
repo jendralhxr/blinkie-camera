@@ -81,15 +81,16 @@ unsigned int delay, delay_freq, delay_phase;
 char value_temp[2];
 unsigned char lumi_temp[2], lumi_max[2], lumi_min[2];
 // self-tuning position
-int axisY=220;
+int axisY=216;
 int axisX[8]={316, 284, 252, 221, 191, 159, 129, 98};
 bool state[8];
-int axisY2=220;
+int axisY2=216;
 int axisX2[8]={316, 284, 252, 221, 191, 159, 129, 98};
 bool state2[8];
 
 // for PLL
 unsigned int segment_start, segment_end, segment_iter, segment_period, segment_period_temp;
+unsigned int delay_applied;
 char segment_sequence; // consecutive 8 frames marker
 bool sync_current, sync_prev[24];
 
@@ -102,7 +103,7 @@ void apply_delay(unsigned int delay){ // hopefully on us
 	//cout << "delay applied " << delay << endl;
 	int i, i2, j, k, x;
 	for (i=delay; i; i--){
-		for (i2=64; i2; i2--){
+		for (i2=65; i2; i2--){
 		j= rand(); k= rand();
 		x= j-k;
 		//y= x*k*x*i*j/k*k*j/k*i*i*j/k*i*x*i/j/j*k;
@@ -278,8 +279,6 @@ int main(){
 		if (state2[5]) value_temp[1] |= 32;
 		if (state2[6]) value_temp[1] |= 64;
 		
-		apply_delay(500); // us
-
 		// yet another silly PLL, based on readable segment, source1
 		// detecting readable segment
 		segment_sequence = segment_sequence <<1;
@@ -314,27 +313,17 @@ int main(){
 		}	
 
 		// applying phase delay
-		segment_iter= framenum-segment_start;
-		if (segment_iter>segment_period) delay_phase= 0;
-		else if (segment_period) delay_phase= int((framenum-segment_start)*SEGMENT_COUNT/segment_period);
-		switch(delay_phase){
-		case 1:
-	//		idpConf.writeRegister(0, 0xb4, 10100, 0);
-			break;
-		case 2:
-//			idpConf.writeRegister(0, 0xb4, 20200, 0);
-			break;
-		case 3:
-	//		idpConf.writeRegister(0, 0xb4, 30300, 0);
-			break;
-		case 4:
-	//		idpConf.writeRegister(0, 0xb4, 40400, 0);
-			break;
-		default: // including 0
-	//		idpC  onf.writeRegister(0, 0xb4, 0, 0);
-			break;
-		}
-
+		segment_iter= framenum-segment_start; // segment count is 3
+		/*if (segment_period!=0) {
+			if (segment_iter < (segment_period/3)) apply_delay(10);
+			else if (segment_iter < (2*segment_period/3)) apply_delay(20);
+			else if (segment_iter < segment_period) apply_delay(30);
+			else apply_delay(0);
+		}*/
+		
+		//if (segment_iter>segment_period) delay_phase= 0;
+		//else if (segment_period) delay_phase= int((framenum-segment_start)*SEGMENT_COUNT/segment_period);
+		
 		// more logging
 		//logintensity << sync_current<<int(framenum-segment_start) << '/' << segment_period << endl;
 		//logintensity << int(lumi_min[0]) << ';' << int(lumi_max[0]) << ';' << int(lumi_temp[0]) <<';' << delay_phase << endl;
