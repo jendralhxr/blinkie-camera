@@ -34,11 +34,6 @@
 #define THRESHOLD_LO 60
 #define THRESHOLD_HI 150
 
-#define DELAY_PHASE 4000 // 1=9.9ns
-#define DELAY_FREQ 0
-#define DELAY_BLOCK 100 // frames
-#define DELAY_BLOCK_CONTRAST 10 // preferable to be even number 
-#define DELAY_MAX 50200 // maximum delay unit on 2k fps is 50505 (500us/9.9ns)
 #define SEGMENT_COUNT 5 // ratio of sync period to readable segment length
 
 using namespace IDPExpress;
@@ -105,13 +100,12 @@ void check_lumi0(){
 
 void apply_delay(unsigned int delay){ // hopefully on us
 	//cout << "delay applied " << delay << endl;
-	double x, y;
-	int i, i2, j, k;
+	int i, i2, j, k, x;
 	for (i=delay; i; i--){
-		for (i2=65; i2; i2--){
-		j= -12566563.41341655; k= 0.02164811;
-		x= i*j/i*j/k*i*i/j/i*j/k*i*i/j/j*i*j/k*i*i/j/i*j/k*i*i/j/j*k;
-		y= x*k*x*i*j/k*i*i/j/i/j/k*i*i*j/j*j/k*i*i/j/i*j/k*i*i/j/j*k;
+		for (i2=64; i2; i2--){
+		j= rand(); k= rand();
+		x= j-k;
+		//y= x*k*x*i*j/k*k*j/k*i*i*j/k*i*x*i/j/j*k;
 		}
 	}
 }
@@ -174,11 +168,11 @@ int main(){
 	void			*pBaseAddress;
 	
 	logfile.open("log-source1.txt");
-	logfile << "start " << DELAY_FREQ << " " << GetTickCount() <<endl;
+	logfile << "start " << GetTickCount() <<endl;
 	logfile2.open("log-source2.txt");
-	logfile2 << "start " << DELAY_FREQ << " " << GetTickCount() << endl;
+	logfile2 << "start " << GetTickCount() << endl;
 	logintensity.open("log-intensity.txt");
-	logintensity << "start " << DELAY_FREQ << " " << GetTickCount() << endl;
+	logintensity << "start " << GetTickCount() << endl;
 	idpConf.writeRegister(0, 0xb4, 0, 0);  // just to be safe
 	
 	//while(1){
@@ -284,7 +278,7 @@ int main(){
 		if (state2[5]) value_temp[1] |= 32;
 		if (state2[6]) value_temp[1] |= 64;
 		
-		//apply_delay(500); // us
+		apply_delay(500); // us
 
 		// yet another silly PLL, based on readable segment, source1
 		// detecting readable segment
