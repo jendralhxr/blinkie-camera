@@ -28,7 +28,7 @@
 #ifdef OPT_SAVE
 #define FRAMENUM_MAX 400
 #else
-#define FRAMENUM_MAX 24000
+#define FRAMENUM_MAX 12000
 #endif
 #define THRESHOLD_LOGIC	100
 #define THRESHOLD_LO 60
@@ -89,7 +89,7 @@ unsigned char lumi_temp[2], lumi_max[2], lumi_min[2];
 int axisY=220;
 int axisX[8]={316, 284, 252, 221, 191, 159, 129, 98};
 bool state[8];
-int axisY2=221;
+int axisY2=220;
 int axisX2[8]={316, 284, 252, 221, 191, 159, 129, 98};
 bool state2[8];
 
@@ -103,6 +103,18 @@ void check_lumi0(){
 	else if (lumi_temp[0] < lumi_min[0]) lumi_min[0]= lumi_temp[0];
 }
 
+void apply_delay(unsigned int delay){ // hopefully on us
+	//cout << "delay applied " << delay << endl;
+	double x, y;
+	int i, i2, j, k;
+	for (i=delay; i; i--){
+		for (i2=65; i2; i2--){
+		j= -12566563.41341655; k= 0.02164811;
+		x= i*j/i*j/k*i*i/j/i*j/k*i*i/j/j*i*j/k*i*i/j/i*j/k*i*i/j/j*k;
+		y= x*k*x*i*j/k*i*i/j/i/j/k*i*i*j/j*j/k*i*i/j/i*j/k*i*i/j/j*k;
+		}
+	}
+}
 int main(){
 	if (idpConf.init()									== PDC_FAILED) return 1;
 	if (idpConf.setRecordRate(FPS)						== PDC_FAILED) return 1;
@@ -272,6 +284,8 @@ int main(){
 		if (state2[5]) value_temp[1] |= 32;
 		if (state2[6]) value_temp[1] |= 64;
 		
+		//apply_delay(500); // us
+
 		// yet another silly PLL, based on readable segment, source1
 		// detecting readable segment
 		segment_sequence = segment_sequence <<1;
