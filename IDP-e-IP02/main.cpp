@@ -30,7 +30,7 @@
 #else
 #define FRAMENUM_MAX 12000
 #endif
-#define THRESHOLD_LOGIC	70
+#define THRESHOLD_LOGIC	165
 #define THRESHOLD_LO 60
 #define THRESHOLD_HI 150
 
@@ -81,8 +81,8 @@ unsigned int delay, delay_freq, delay_phase;
 char value_temp[2], value_prev[2], value_current[2];
 unsigned char lumi_temp[2], lumi_max[2], lumi_min[2];
 // self-tuning position
-int axisX[8]={313, 282, 251, 219, 189, 158, 127, 96};
-int axisY[8]={217, 217, 217, 216, 216, 217, 217, 217};
+int axisX[8]={325, 294, 262, 231, 200, 169, 138, 107};
+int axisY[8]={217, 217, 218, 218, 218, 219, 219, 220};
 bool state[8];
 int axisX2[8]={313, 282, 250, 219, 189, 157, 127, 96};
 int axisY2[8]={313, 282, 250, 219, 189, 157, 127, 96};
