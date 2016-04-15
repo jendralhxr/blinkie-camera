@@ -28,7 +28,7 @@
 #ifdef OPT_SAVE
 #define FRAMENUM_MAX 400
 #else
-#define FRAMENUM_MAX 32000
+#define FRAMENUM_MAX 2000
 #endif
 
 using namespace IDPExpress;
@@ -74,14 +74,11 @@ bool dropped;
 unsigned int delay, delay_freq, delay_phase;
 
 char value_temp[2], value_prev[2], value_prev2[2], value_current[2];
-unsigned char lumi_temp[2], lumi_max[2], lumi_min[2], lumi_led[2][8], lumi_threshold=200;
+unsigned char lumi_temp[2], lumi_max[2], lumi_min[2], lumi_led[9], lumi_threshold=200;
 // self-tuning position
-int axisX[8]={229, 229, 230, 230, 230, 230, 230, 231};
-int axisY[8]={80, 111, 142, 173, 203, 234, 264, 295};
+int axisX[9]={213, 217, 223, 226, 232, 238, 241, 244, 254};
+int axisY[9]={234, 228, 235, 228, 235, 229, 235, 229, 229};
 bool state[8];
-int axisX2[8]={313, 282, 250, 219, 189, 157, 127, 96};
-int axisY2[8]={313, 282, 250, 219, 189, 157, 127, 96};
-bool state2[8];
 
 // for PLL
 unsigned int segment_start, segment_end, segment_iter, segment_period, segment_period_temp;
@@ -164,12 +161,9 @@ int main(){
 	
 	//logfile.open("log-source1.txt");
 	//logfile << "start " << GetTickCount() <<endl;
-	//logfile2.open("log-source2.txt");
-	//logfile2 << "start " << GetTickCount() << endl;
 	logintensity.open("log-intensity.txt");
 	logintensity << "start " << GetTickCount() << endl;
-	//idpConf.writeRegister(0, 0xb4, 0, 0);  // just to be safe
-	idpConf.writeRegister(0, 0xb4, 0);
+	idpConf.writeRegister(0, 0xb4, 0); // just to be safe
 	idpConf.writeRegister(0, 0xb4, 0);
 
 	//while(1){
@@ -184,7 +178,6 @@ int main(){
 		//idpUtil.getHeadData(imgHead.data, 0); // head0
 		idpUtil.getHeadData(imgHead.data, 0); // head1
 		
-
 #ifdef OPT_SAVE
 		//for later saving
 		imgHead.copyTo(img[framenum]);
@@ -195,49 +188,49 @@ int main(){
 		lumi_max[0]= 0;
 		lumi_min[0]= 255;
 		
-		for (int i=0; i<8; i++){
+		for (int i=0; i<9; i++){
 			state[i] = FALSE;
-			lumi_led[0][i]= 0;
+			lumi_led[i]= 0;
 			// selection isn't else'd so execution is rather constant
 			lumi_temp[0]= imgHead.data[(axisY[i]*IMG_WIDTH + axisX[i])];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
 			if ((i==0) || (i==7)) check_lumi0();
-			if (lumi_temp[0] > lumi_led[0][i]) lumi_led[0][i] = lumi_temp[0];
+			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
 			lumi_temp[0]= imgHead.data[(axisY[i]*IMG_WIDTH + axisX[i]+1)];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
-			if (lumi_temp[0] > lumi_led[0][i]) lumi_led[0][i] = lumi_temp[0];
+			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
 			if ((i==0) || (i==7)) check_lumi0();
 			lumi_temp[0]= imgHead.data[(axisY[i]*IMG_WIDTH + axisX[i]-1)];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
-			if (lumi_temp[0] > lumi_led[0][i]) lumi_led[0][i] = lumi_temp[0];
+			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
 			if ((i==0) || (i==7)) check_lumi0();
 			lumi_temp[0]= imgHead.data[((axisY[i]+1)*IMG_WIDTH + axisX[i])];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
-			if (lumi_temp[0] > lumi_led[0][i]) lumi_led[0][i] = lumi_temp[0];
+			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
 			if ((i==0) || (i==7)) check_lumi0();
 			lumi_temp[0]= imgHead.data[((axisY[i]+1)*IMG_WIDTH + axisX[i]+1)];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
-			if (lumi_temp[0] > lumi_led[0][i]) lumi_led[0][i] = lumi_temp[0];
+			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
 			if ((i==0) || (i==7)) check_lumi0();
 			lumi_temp[0]= imgHead.data[((axisY[i]+1)*IMG_WIDTH + axisX[i]-1)];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
-			if (lumi_temp[0] > lumi_led[0][i]) lumi_led[0][i] = lumi_temp[0];
+			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
 			if ((i==0) || (i==7)) check_lumi0();
 			lumi_temp[0]= imgHead.data[((axisY[i]-1)*IMG_WIDTH + axisX[i])];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
-			if (lumi_temp[0] > lumi_led[0][i]) lumi_led[0][i] = lumi_temp[0];
+			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
 			if ((i==0) || (i==7)) check_lumi0();
 			lumi_temp[0]= imgHead.data[((axisY[i]-1)*IMG_WIDTH + axisX[i]+1)];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
-			if (lumi_temp[0] > lumi_led[0][i]) lumi_led[0][i] = lumi_temp[0];
+			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
 			if ((i==0) || (i==7)) check_lumi0();
 			lumi_temp[0]= imgHead.data[((axisY[i]-1)*IMG_WIDTH + axisX[i]-1)];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
-			if (lumi_temp[0] > lumi_led[0][i]) lumi_led[0][i] = lumi_temp[0];
+			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
 			if ((i==0) || (i==7)) check_lumi0();
 		}
 
-		if (lumi_max[0] < lumi_threshold) lumi_threshold= lumi_max[0];
+		//if (lumi_max[0] < lumi_threshold) lumi_threshold= lumi_max[0];
 
 		// reconstuct value
 		if (state[0]) value_temp[0] |= 1;
@@ -252,103 +245,49 @@ int main(){
 		value_prev[0]= value_current[0];
 		value_current[0] = value_temp[0];
 		
+		// easy way out
 		sync_current = FALSE;
 		if (value_current[0] == (value_prev[0]+1)) sync_current= TRUE;
 		if ((value_prev[0]==0x7F) && (value_current[0]==0)) sync_current= TRUE;
 		if (value_current[0] == (value_prev2[0]+2)) sync_current= TRUE;
 		if (value_current[0] == value_prev[0]) sync_current= TRUE;
 				
-		/*
-		// for source2
-		// current character being read
-		value_temp[1]= 0;
-		lumi_max[1]= 0;
-		lumi_min[1]= 255;
-
-		for (int i=0; i<8; i++){
-			state2[i] = FALSE;
-			// selection isn't else'd so execution is rather constant
-			lumi_temp[1]= imgHead.data[(axisY2[i]*IMG_WIDTH + axisX2[i])];
-			if (lumi_temp[1] > lumi_threshold) state2[i] = TRUE;
-			lumi_temp[1]= imgHead.data[(axisY2[i]*IMG_WIDTH + axisX2[i]+1)];
-			if (lumi_temp[1] > lumi_threshold) state2[i] = TRUE;
-			lumi_temp[1]= imgHead.data[(axisY2[i]*IMG_WIDTH + axisX2[i]-1)];
-			if (lumi_temp[1] > lumi_threshold) state2[i] = TRUE;
-			lumi_temp[1]= imgHead.data[((axisY2[i]+1)*IMG_WIDTH + axisX2[i])];
-			if (lumi_temp[1] > lumi_threshold) state2[i] = TRUE;
-			lumi_temp[1]= imgHead.data[((axisY2[i]+1)*IMG_WIDTH + axisX2[i]+1)];
-			if (lumi_temp[1] > lumi_threshold) state2[i] = TRUE;
-			lumi_temp[1]= imgHead.data[((axisY2[i]+1)*IMG_WIDTH + axisX2[i]-1)];
-			if (lumi_temp[1] > lumi_threshold) state2[i] = TRUE;
-			lumi_temp[1]= imgHead.data[((axisY2[i]-1)*IMG_WIDTH + axisX2[i])];
-			if (lumi_temp[1] > lumi_threshold) state2[i] = TRUE;
-			lumi_temp[1]= imgHead.data[((axisY2[i]-1)*IMG_WIDTH + axisX2[i]+1)];
-			if (lumi_temp[1] > lumi_threshold) state2[i] = TRUE;
-			lumi_temp[1]= imgHead.data[((axisY2[i]-1)*IMG_WIDTH + axisX2[i]-1)];
-			if (lumi_temp[1] > lumi_threshold) state2[i] = TRUE;
-			//if (lumi_temp[1] > lumi_max[1]) lumi_max[1]= lumi_temp[1];
-			//else if (lumi_temp[1] < lumi_min[1]) lumi_min[1]= lumi_temp[1];
-		}
-		
-		// reconstruct value, source2
-		if (state2[0]) value_temp[1] |= 1;
-		if (state2[1]) value_temp[1] |= 2;
-		if (state2[2]) value_temp[1] |= 4;
-		if (state2[3]) value_temp[1] |= 8;
-		if (state2[4]) value_temp[1] |= 16;
-		if (state2[5]) value_temp[1] |= 32;
-		if (state2[6]) value_temp[1] |= 64;
-		*/
-
 		logintensity << oldFrameNo << ';' << short int(lumi_min[0]) << ';' << short int(lumi_max[0]) << ';' << short int(lumi_threshold)\
-			<< ';' << short int (lumi_led[0][0]) << ';' << short int (lumi_led[0][1]) << ';' << short int (lumi_led[0][2]) \
-			<< ';' << short int (lumi_led[0][3]) << ';' << short int (lumi_led[0][4]) << ';' << short int (lumi_led[0][5]) \
-			<< ';' << short int (lumi_led[0][6]) << ';' << short int (lumi_led[0][7]) \
+			<< ';' << short int (lumi_led[0]) << ';' << short int (lumi_led[1]) << ';' << short int (lumi_led[2]) \
+			<< ';' << short int (lumi_led[3]) << ';' << short int (lumi_led[4]) << ';' << short int (lumi_led[5]) \
+			<< ';' << short int (lumi_led[6]) << ';' << short int (lumi_led[7]) << ';' << short int (lumi_led[8]) \
 			<< ';' << unsigned short int (value_temp[0]) <<';' << sync_current << endl;
 		
-		if (!sync_current) idpConf.writeRegister(0,0xb4,6250);
+		// tinker a bit here
+
+		//if (!sync_current) idpConf.writeRegister(0,0xb4,6250);
 		//apply_delay(500);
 	} // framenum
 
 	logintensity << "stop  " << GetTickCount() << endl;
 	logintensity << "------------" << endl;
 	logintensity.close();
-
+	
+#ifdef OPT_SAVE
 	cout << "start saving" << endl;
 	vector<int> compression_params;
 	compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
 	compression_params.push_back(9);
 
-#ifdef OPT_SAVE
 	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		try {
 			sprintf(filename,"%4.4d.jpg",framenum);
 			// for (int i=0; i<IMG_WIDTH; i++) imgHead.data[axisY[i]*IMG_WIDTH + i] = 200;
 			// imwrite(filename, imgHead, compression_params);  // PNG
-			 imwrite(filename, img[framenum]); // another
-
+			imwrite(filename, img[framenum]); // another
 		}
 		catch (runtime_error& ex) {
 			fprintf(stderr, "Exception converting image to JPG format: %s\n", ex.what());
 			return 1;
 		}
-		
-		/*
-		logfile.open("logdata-fixedpoints.txt", ios::app);
-		logfile << int(imgHead.data[(axisY[i]*IMG_WIDTH + axisX[0])]) << ';' << \
-			int(imgHead.data[axisY[i]*IMG_WIDTH + axisX[1]]) << ';' << \
-			int(imgHead.data[axisY[i]*IMG_WIDTH + axisX[2]]) << ';' << \
-			int(imgHead.data[axisY[i]*IMG_WIDTH + axisX[3]]) << ';' << \
-			int(imgHead.data[axisY[i]*IMG_WIDTH + axisX[4]]) << ';' << \
-			int(imgHead.data[axisY[i]*IMG_WIDTH + axisX[5]]) << ';' << \
-			int(imgHead.data[axisY[i]*IMG_WIDTH + axisX[6]]) << ';' << \
-			int(imgHead.data[axisY[i]*IMG_WIDTH + axisX[7]]) << ';';
-		logfile << endl;
-		logfile.close();
-		*/  //nested commenting sucks
 	}
 #endif
-	
+
 	if (idpConf.closeDevice() == PDC_FAILED) return 1;
 	destroyAllWindows();
 	return(0);
