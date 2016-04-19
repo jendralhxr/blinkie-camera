@@ -28,7 +28,7 @@
 #ifdef OPT_SAVE
 #define FRAMENUM_MAX 400
 #else
-#define FRAMENUM_MAX 2000
+#define FRAMENUM_MAX 8000
 #endif
 
 using namespace IDPExpress;
@@ -60,7 +60,6 @@ Mat *img;
 char buffer[256];
 int nframenumber[FRAMENUM_MAX];
 
-// char state; // 0 waiting; 1 read
 int index_char= 0;
 std::string str;
 
@@ -71,20 +70,24 @@ ofstream logintensity;
 char filename[20];
 //int blocknum;
 bool dropped;
-unsigned int delay, delay_freq, delay_phase;
 
-char value_temp[2], value_prev[2], value_prev2[2], value_current[2];
-unsigned char lumi_temp[2], lumi_max[2], lumi_min[2], lumi_led[9], lumi_threshold=200;
+#define LUMI_INIT 200
+unsigned char value_temp[2], value_prev[2], value_prev2[2], value_current[2];
+unsigned char lumi_temp[2], lumi_max[2], lumi_min[2], lumi_led[9], lumi_threshold=LUMI_INIT;
 // self-tuning position
-int axisX[9]={213, 217, 223, 226, 232, 238, 241, 244, 254};
-int axisY[9]={234, 228, 235, 228, 235, 229, 235, 229, 229};
+int axisX[9]={261, 264, 269, 272, 278, 281, 287, 290, 299};
+int axisY[9]={229, 223, 229, 223, 229, 223, 230, 224, 224};
 bool state[8];
 
+bool sync_current;
+
 // for PLL
-unsigned int segment_start, segment_end, segment_iter, segment_period, segment_period_temp;
-unsigned int delay_applied;
-char segment_sequence; // consecutive 8 frames marker
-bool sync_current, sync_prev[24];
+#define MARKER_BLOCK 100
+#define DELAY_STEP 1000 // from 0 to 50000-ish
+float marker_accu, marker_prev=255;
+unsigned int marker_iter;
+unsigned int delay_phase;
+bool marker_stop;
 
 void check_lumi0(){
 	if (lumi_temp[0] > lumi_max[0]) lumi_max[0]= lumi_temp[0];
@@ -240,7 +243,8 @@ int main(){
 		if (state[4]) value_temp[0] |= 16;
 		if (state[5]) value_temp[0] |= 32;
 		if (state[6]) value_temp[0] |= 64;
-		
+		if (state[7]) value_temp[0] |= 128;
+				
 		value_prev2[0]= value_prev[0];
 		value_prev[0]= value_current[0];
 		value_current[0] = value_temp[0];
@@ -250,15 +254,33 @@ int main(){
 		if (value_current[0] == (value_prev[0]+1)) sync_current= TRUE;
 		if ((value_prev[0]==0x7F) && (value_current[0]==0)) sync_current= TRUE;
 		if (value_current[0] == (value_prev2[0]+2)) sync_current= TRUE;
-		if (value_current[0] == value_prev[0]) sync_current= TRUE;
+		//if (value_current[0] == value_prev[0]) sync_current= TRUE;
 				
 		logintensity << oldFrameNo << ';' << short int(lumi_min[0]) << ';' << short int(lumi_max[0]) << ';' << short int(lumi_threshold)\
 			<< ';' << short int (lumi_led[0]) << ';' << short int (lumi_led[1]) << ';' << short int (lumi_led[2]) \
 			<< ';' << short int (lumi_led[3]) << ';' << short int (lumi_led[4]) << ';' << short int (lumi_led[5]) \
 			<< ';' << short int (lumi_led[6]) << ';' << short int (lumi_led[7]) << ';' << short int (lumi_led[8]) \
-			<< ';' << unsigned short int (value_temp[0]) <<';' << sync_current << endl;
+			<< ';' << unsigned short int (value_temp[0]) << ';' << unsigned int (delay_phase)\
+			<< ';' << sync_current << endl;
 		
-		// tinker a bit here
+		// marker intensity for phase lock
+		marker_iter++;
+		if (marker_iter==MARKER_BLOCK){
+			marker_accu= marker_accu/MARKER_BLOCK;
+			marker_iter= 0;
+			if (marker_accu < marker_prev){
+				// apply delay
+				delay_phase+= DELAY_STEP;
+				idpConf.writeRegister(0,0xb4,delay_phase);
+				cout << "delay: " << delay_phase << endl; 
+				logintensity << "delay " << delay_phase << ';' << marker_accu << endl;
+				marker_prev= marker_accu;
+				marker_accu= 0.0;
+			}
+		}
+		else{
+			marker_accu= marker_accu +lumi_led[8]; 
+		}
 
 		//if (!sync_current) idpConf.writeRegister(0,0xb4,6250);
 		//apply_delay(500);
