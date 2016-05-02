@@ -20,7 +20,7 @@
 #pragma comment(lib, "PDCLIB.lib")
 
 #define FPS			2000
-#define SHUTTER		2000
+#define SHUTTER		2800
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	512
 
@@ -28,7 +28,7 @@
 #ifdef OPT_SAVE
 #define FRAMENUM_MAX 400
 #else
-#define FRAMENUM_MAX 20000
+#define FRAMENUM_MAX 40000
 #endif
 
 using namespace IDPExpress;
@@ -68,22 +68,20 @@ ofstream logfile;
 ofstream logfile2;
 ofstream logintensity;
 char filename[20];
-//int blocknum;
-bool dropped;
 
-#define LUMI_INIT 180
+#define LUMI_INIT 230
 unsigned char value_temp[2], value_prev[2], value_prev2[2], value_current[2];
 unsigned char lumi_temp[2], lumi_max[2], lumi_min[2], lumi_led[9], lumi_threshold=LUMI_INIT;
 // self-tuning position
-int axisX[9]={264, 267, 272, 275, 281, 284, 290, 293, 302};
-int axisY[9]={228, 222, 228, 222, 228, 222, 228, 223, 223};
+int axisX[9]={263, 266, 272, 275, 280, 283, 289, 292, 301};
+int axisY[9]={227, 222, 227, 221, 227, 220, 226, 221, 220};
 bool state[8];
 
 bool sync_current;
 
 // for PLL
 #define MARKER_BLOCK 100
-#define DELAY_STEP 2500 // from 0 to 50000-ish
+#define DELAY_STEP 8000 // from 0 to 50000-ish
 float marker_accu, marker_prev=255;
 unsigned int marker_iter;
 unsigned int delay_phase;
@@ -263,6 +261,11 @@ int main(){
 			<< ';' << unsigned short int (value_temp[0]) << ';' << unsigned int (delay_phase)\
 			<< ';' << sync_current << endl;
 		
+		// pll iseng
+		if (lumi_led[8] > 40) idpConf.writeRegister(0,0xb4,5000);
+		else idpConf.writeRegister(0,0xb4,0);
+
+		/*
 		// marker intensity for phase lock
 		marker_iter++;
 		if (marker_iter==MARKER_BLOCK){
@@ -271,7 +274,7 @@ int main(){
 			if (marker_accu < marker_prev){
 				// apply delay
 				delay_phase+= DELAY_STEP;
-				idpConf.writeRegister(0,0xb4,delay_phase);
+				//idpConf.writeRegister(0,0xb4,delay_phase);
 				cout << "delay: " << delay_phase << endl; 
 				//logintensity << "delay " << delay_phase << ';' << marker_accu << endl;
 				marker_prev= marker_accu;
@@ -281,9 +284,8 @@ int main(){
 		else{
 			marker_accu= marker_accu +lumi_led[8]; 
 		}
+		*/
 
-		//if (!sync_current) idpConf.writeRegister(0,0xb4,6250);
-		//apply_delay(500);
 	} // framenum
 
 	logintensity << "stop  " << GetTickCount() << endl;
