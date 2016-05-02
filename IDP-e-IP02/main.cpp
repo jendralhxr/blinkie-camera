@@ -28,7 +28,7 @@
 #ifdef OPT_SAVE
 #define FRAMENUM_MAX 400
 #else
-#define FRAMENUM_MAX 40000
+#define FRAMENUM_MAX 50000
 #endif
 
 using namespace IDPExpress;
@@ -247,23 +247,22 @@ int main(){
 		value_prev[0]= value_current[0];
 		value_current[0] = value_temp[0];
 		
-		// easy way out
+	/*	// easy way out
 		sync_current = FALSE;
 		if (value_current[0] == (value_prev[0]+1)) sync_current= TRUE;
 		if ((value_prev[0]==255) && (value_current[0]==0)) sync_current= TRUE;
 		if (value_current[0] == (value_prev2[0]+2)) sync_current= TRUE;
 		//if (value_current[0] == value_prev[0]) sync_current= TRUE;
-				
+			*/	
 		logintensity << oldFrameNo << ';' << short int(lumi_min[0]) << ';' << short int(lumi_max[0]) << ';' << short int(lumi_threshold)\
 			<< ';' << short int (lumi_led[0]) << ';' << short int (lumi_led[1]) << ';' << short int (lumi_led[2]) \
 			<< ';' << short int (lumi_led[3]) << ';' << short int (lumi_led[4]) << ';' << short int (lumi_led[5]) \
 			<< ';' << short int (lumi_led[6]) << ';' << short int (lumi_led[7]) << ';' << short int (lumi_led[8]) \
-			<< ';' << unsigned short int (value_temp[0]) << ';' << unsigned int (delay_phase)\
-			<< ';' << sync_current << endl;
+			<< ';' << unsigned short int (value_temp[0]) << endl;
 		
 		// pll iseng
-		if (lumi_led[8] > 40) idpConf.writeRegister(0,0xb4,5000);
-		else idpConf.writeRegister(0,0xb4,0);
+	//	if (lumi_led[8] > 40) idpConf.writeRegister(0,0xb4,5000);
+	//	else idpConf.writeRegister(0,0xb4,0);
 
 		/*
 		// marker intensity for phase lock
