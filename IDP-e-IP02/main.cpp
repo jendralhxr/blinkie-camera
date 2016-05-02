@@ -28,7 +28,7 @@
 #ifdef OPT_SAVE
 #define FRAMENUM_MAX 400
 #else
-#define FRAMENUM_MAX 8000
+#define FRAMENUM_MAX 20000
 #endif
 
 using namespace IDPExpress;
@@ -71,19 +71,19 @@ char filename[20];
 //int blocknum;
 bool dropped;
 
-#define LUMI_INIT 200
+#define LUMI_INIT 180
 unsigned char value_temp[2], value_prev[2], value_prev2[2], value_current[2];
 unsigned char lumi_temp[2], lumi_max[2], lumi_min[2], lumi_led[9], lumi_threshold=LUMI_INIT;
 // self-tuning position
-int axisX[9]={261, 264, 269, 272, 278, 281, 287, 290, 299};
-int axisY[9]={229, 223, 229, 223, 229, 223, 230, 224, 224};
+int axisX[9]={264, 267, 272, 275, 281, 284, 290, 293, 302};
+int axisY[9]={228, 222, 228, 222, 228, 222, 228, 223, 223};
 bool state[8];
 
 bool sync_current;
 
 // for PLL
 #define MARKER_BLOCK 100
-#define DELAY_STEP 1000 // from 0 to 50000-ish
+#define DELAY_STEP 2500 // from 0 to 50000-ish
 float marker_accu, marker_prev=255;
 unsigned int marker_iter;
 unsigned int delay_phase;
@@ -197,40 +197,40 @@ int main(){
 			// selection isn't else'd so execution is rather constant
 			lumi_temp[0]= imgHead.data[(axisY[i]*IMG_WIDTH + axisX[i])];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
-			if ((i==0) || (i==7)) check_lumi0();
+			check_lumi0();
 			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
 			lumi_temp[0]= imgHead.data[(axisY[i]*IMG_WIDTH + axisX[i]+1)];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
 			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
-			if ((i==0) || (i==7)) check_lumi0();
+			check_lumi0();
 			lumi_temp[0]= imgHead.data[(axisY[i]*IMG_WIDTH + axisX[i]-1)];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
 			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
-			if ((i==0) || (i==7)) check_lumi0();
+			check_lumi0();
 			lumi_temp[0]= imgHead.data[((axisY[i]+1)*IMG_WIDTH + axisX[i])];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
 			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
-			if ((i==0) || (i==7)) check_lumi0();
+			check_lumi0();
 			lumi_temp[0]= imgHead.data[((axisY[i]+1)*IMG_WIDTH + axisX[i]+1)];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
 			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
-			if ((i==0) || (i==7)) check_lumi0();
+			check_lumi0();
 			lumi_temp[0]= imgHead.data[((axisY[i]+1)*IMG_WIDTH + axisX[i]-1)];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
 			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
-			if ((i==0) || (i==7)) check_lumi0();
+			check_lumi0();
 			lumi_temp[0]= imgHead.data[((axisY[i]-1)*IMG_WIDTH + axisX[i])];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
 			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
-			if ((i==0) || (i==7)) check_lumi0();
+			check_lumi0();
 			lumi_temp[0]= imgHead.data[((axisY[i]-1)*IMG_WIDTH + axisX[i]+1)];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
 			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
-			if ((i==0) || (i==7)) check_lumi0();
+			check_lumi0();
 			lumi_temp[0]= imgHead.data[((axisY[i]-1)*IMG_WIDTH + axisX[i]-1)];
 			if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
 			if (lumi_temp[0] > lumi_led[i]) lumi_led[i] = lumi_temp[0];
-			if ((i==0) || (i==7)) check_lumi0();
+			check_lumi0();
 		}
 
 		//if (lumi_max[0] < lumi_threshold) lumi_threshold= lumi_max[0];
@@ -252,7 +252,7 @@ int main(){
 		// easy way out
 		sync_current = FALSE;
 		if (value_current[0] == (value_prev[0]+1)) sync_current= TRUE;
-		if ((value_prev[0]==0x7F) && (value_current[0]==0)) sync_current= TRUE;
+		if ((value_prev[0]==255) && (value_current[0]==0)) sync_current= TRUE;
 		if (value_current[0] == (value_prev2[0]+2)) sync_current= TRUE;
 		//if (value_current[0] == value_prev[0]) sync_current= TRUE;
 				
@@ -273,7 +273,7 @@ int main(){
 				delay_phase+= DELAY_STEP;
 				idpConf.writeRegister(0,0xb4,delay_phase);
 				cout << "delay: " << delay_phase << endl; 
-				logintensity << "delay " << delay_phase << ';' << marker_accu << endl;
+				//logintensity << "delay " << delay_phase << ';' << marker_accu << endl;
 				marker_prev= marker_accu;
 				marker_accu= 0.0;
 			}
