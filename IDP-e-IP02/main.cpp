@@ -237,40 +237,41 @@ int main(){
 		value_current[0] = value_temp[0];
 		
 		// image reconst
-	if (value_temp[0] == 0x3) {
-		if (value_prev[0] != 0x3) {
-		i = 0;
-		j = 0;
-		cout << "image start" << endl;
-		if (done) {
-			// save image
-			cout << "saving" << endl;
-			sprintf(filename,"%d.png",GetTickCount());
-			imwrite(filename, imgResult, compression_params);	// PNG
-			// imshow( "result", imgResult);
-		} else
+if (value_temp[0] == 0x3) {
+    if (value_prev[0] != 0x3) {
+	i = 0;
+	j = 0;
+	cout << "image start" << endl;
+	if (done) {
+	    // save image
+	    cout << "saving" << endl;
+	    sprintf(filename,"%d.png",GetTickCount());
+		imwrite(filename, imgResult, compression_params);	// PNG
+		// imshow( "result", imgResult);
+	} else
 	    done = 1;
     }
-	} else if (value_temp[0] == 0xc) {
-		if (value_prev[0] != 0xc) {
-		j++;
-		i = 0;
-		cout << "row: " << j << endl;
-		}
-	} else if (i < RESULT_WIDTH) {
-		imgResult.data[j * RESULT_WIDTH + i] = value_temp[0];
-		i++;
-	}
+} else if (value_temp[0] == 0xc) {
+    if (value_prev[0] != 0xc) {
+	j++;
+	i = 0;
+	cout << "row: " << j << endl;
+    }
+} else if (i < RESULT_WIDTH) {
+    imgResult.data[j * RESULT_WIDTH + i] = value_temp[0];
+    i++;
+}
 
-	logintensity << oldFrameNo << ';' << short int(lumi_min[0]) << ';' << short int(lumi_max[0])\
-		<< ';' << short int (lumi_led[0]) << ';' << short int (lumi_led[1]) << ';' << short int (lumi_led[2]) \
-		<< ';' << short int (lumi_led[3]) << ';' << short int (lumi_led[4]) << ';' << short int (lumi_led[5]) \
-		<< ';' << short int (lumi_led[6]) << ';' << short int (lumi_led[7]) << ';' << short int (lumi_led[8]) \
-		<< ';' << unsigned short int (value_temp[0]) << endl;
+
+		logintensity << oldFrameNo << ';' << short int(lumi_min[0]) << ';' << short int(lumi_max[0])\
+			<< ';' << short int (lumi_led[0]) << ';' << short int (lumi_led[1]) << ';' << short int (lumi_led[2]) \
+			<< ';' << short int (lumi_led[3]) << ';' << short int (lumi_led[4]) << ';' << short int (lumi_led[5]) \
+			<< ';' << short int (lumi_led[6]) << ';' << short int (lumi_led[7]) << ';' << short int (lumi_led[8]) \
+			<< ';' << unsigned short int (value_temp[0]) << endl;
 		
-	//intermittent pll 
-	if (lumi_led[8] > 40) idpConf.writeRegister(0,0xb4,5000);
-	else idpConf.writeRegister(0,0xb4,0);
+		// pll iseng
+	//	if (lumi_led[8] > 40) idpConf.writeRegister(0,0xb4,5000);
+	//	else idpConf.writeRegister(0,0xb4,0);
 
 	} // framenum
 
