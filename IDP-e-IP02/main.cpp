@@ -20,17 +20,15 @@
 #pragma comment(lib, "PDCLIB.lib")
 
 #define FPS			2000
-#define SHUTTER		2800
+#define SHUTTER		2000
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	512
-#define RESULT_WIDTH 256
-#define RESULT_HEIGHT 256
 
 //#define OPT_SAVE 
 #ifdef OPT_SAVE
-#define FRAMENUM_MAX 400
+#define FRAMENUM_MAX 40
 #else
-#define FRAMENUM_MAX 120000
+#define FRAMENUM_MAX 4000
 #endif
 
 using namespace IDPExpress;
@@ -56,34 +54,37 @@ IDPExpressConfig idpConf(1);
 #define ADDR_ROI1_CAM2		0x30
 #define ADDR_ROI2_CAM2		0x34
 
-// matrices
-Mat	imgHead, imgResult;
+Mat	imgHead;
 Mat *img;
 
+char buffer[256];
+int nframenumber[FRAMENUM_MAX];
+
+int index_char= 0;
+std::string str;
+
 //logs
-ofstream logfile;
-ofstream logfile2;
 ofstream logintensity;
 char filename[20];
 
-#define LUMI_INIT 200
+#define SECTIONNUM 13
+#define LUMI_INIT 230
 unsigned char value_temp[2], value_prev[2], value_prev2[2], value_current[2];
 unsigned char lumi_temp[2], lumi_max[2], lumi_min[2], lumi_led[9], lumi_threshold=LUMI_INIT;
 // self-tuning position
-int axisX[9]={263, 266, 272, 275, 280, 283, 289, 292, 301};
-int axisY[9]={227, 222, 227, 221, 227, 220, 226, 221, 220};
+int axisX[SECTIONNUM]={191,219,288,341,364,346,290,223,156,103, 81, 89,148};
+int axisY[SECTIONNUM]={217, 85, 96,142,215,283,330,349,329,290,215,139, 89};
 bool state[8];
-int n; // led iter
+
+bool sync_current;
 
 // for PLL
 #define MARKER_BLOCK 100
 #define DELAY_STEP 8000 // from 0 to 50000-ish
-#define DELAY_AMOUNT 5000
-
-// image reconst
-int x, y, i, j;
-unsigned char temp, prev;
-char done;
+float marker_accu, marker_prev=255;
+unsigned int marker_iter;
+unsigned int delay_phase;
+bool marker_stop;
 
 void check_lumi0(){
 	if (lumi_temp[0] > lumi_max[0]) lumi_max[0]= lumi_temp[0];
@@ -137,7 +138,6 @@ int main(){
 	// mess start here
 	unsigned int framenum;
 	imgHead			= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
-	imgResult	= Mat(RESULT_HEIGHT, RESULT_WIDTH, CV_8UC1);
 	// buffered images
 #ifdef OPT_SAVE
 	img = new cv::Mat [FRAMENUM_MAX];
@@ -149,16 +149,11 @@ int main(){
 	unsigned long	nFrameNo, oldFrameNo = 0;
 	void			*pBaseAddress;
 	
-	logintensity.open("log.txt");
-	logintensity << "start " << GetTickCount() << endl;
 	idpConf.writeRegister(0, 0xb4, 0); // just to be safe
 	idpConf.writeRegister(0, 0xb4, 0);
-
-	// saving
-	vector < int   >compression_params;
-	    compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
-	    compression_params.push_back(9);
-
+	logintensity.open("log.txt");
+	logintensity << "start " << GetTickCount() << endl;
+	
 	//while(1){
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
 	waitframe:
@@ -166,8 +161,8 @@ int main(){
 		if (nFrameNo == oldFrameNo) goto waitframe;
 		oldFrameNo = nFrameNo;
 		//cout << framenum << "--" << nFrameNo << endl;
-		//idpUtil.setBase((UINT8 *)pBaseAddress +8); // head0
-		idpUtil.setBase((UINT8 *)pBaseAddress -8); // head1
+		idpUtil.setBase((UINT8 *)pBaseAddress); // head0
+		//idpUtil.setBase((UINT8 *)pBaseAddress -8); // head1
 		//idpUtil.getHeadData(imgHead.data, 0); // head0
 		idpUtil.getHeadData(imgHead.data, 0); // head1
 		
@@ -181,107 +176,27 @@ int main(){
 		lumi_max[0]= 0;
 		lumi_min[0]= 255;
 		
-		for (n=0; n<9; n++){
-			state[n] = FALSE;
-			lumi_led[n]= 0;
+		for (int i=0; i<SECTIONNUM; i++){
+			//state[i] = FALSE;
+			lumi_led[i]= 0;
 			// selection isn't else'd so execution is rather constant
-			lumi_temp[0]= imgHead.data[(axisY[n]*IMG_WIDTH + axisX[n])];
-			if (lumi_temp[0] > lumi_threshold) state[n] = TRUE;
-			check_lumi0();
-			if (lumi_temp[0] > lumi_led[n]) lumi_led[n] = lumi_temp[0];
-			lumi_temp[0]= imgHead.data[(axisY[n]*IMG_WIDTH + axisX[n]+1)];
-			if (lumi_temp[0] > lumi_threshold) state[n] = TRUE;
-			if (lumi_temp[0] > lumi_led[n]) lumi_led[n] = lumi_temp[0];
-			check_lumi0();
-			lumi_temp[0]= imgHead.data[(axisY[n]*IMG_WIDTH + axisX[n]-1)];
-			if (lumi_temp[0] > lumi_threshold) state[n] = TRUE;
-			if (lumi_temp[0] > lumi_led[n]) lumi_led[n] = lumi_temp[0];
-			check_lumi0();
-			lumi_temp[0]= imgHead.data[((axisY[n]+1)*IMG_WIDTH + axisX[n])];
-			if (lumi_temp[0] > lumi_threshold) state[n] = TRUE;
-			if (lumi_temp[0] > lumi_led[n]) lumi_led[n] = lumi_temp[0];
-			check_lumi0();
-			lumi_temp[0]= imgHead.data[((axisY[n]+1)*IMG_WIDTH + axisX[n]+1)];
-			if (lumi_temp[0] > lumi_threshold) state[n] = TRUE;
-			if (lumi_temp[0] > lumi_led[n]) lumi_led[n] = lumi_temp[0];
-			check_lumi0();
-			lumi_temp[0]= imgHead.data[((axisY[n]+1)*IMG_WIDTH + axisX[n]-1)];
-			if (lumi_temp[0] > lumi_threshold) state[n] = TRUE;
-			if (lumi_temp[0] > lumi_led[n]) lumi_led[n] = lumi_temp[0];
-			check_lumi0();
-			lumi_temp[0]= imgHead.data[((axisY[n]-1)*IMG_WIDTH + axisX[n])];
-			if (lumi_temp[0] > lumi_threshold) state[n] = TRUE;
-			if (lumi_temp[0] > lumi_led[n]) lumi_led[n] = lumi_temp[0];
-			check_lumi0();
-			lumi_temp[0]= imgHead.data[((axisY[n]-1)*IMG_WIDTH + axisX[n]+1)];
-			if (lumi_temp[0] > lumi_threshold) state[n] = TRUE;
-			if (lumi_temp[0] > lumi_led[n]) lumi_led[n] = lumi_temp[0];
-			check_lumi0();
-			lumi_temp[0]= imgHead.data[((axisY[n]-1)*IMG_WIDTH + axisX[n]-1)];
-			if (lumi_temp[0] > lumi_threshold) state[n] = TRUE;
-			if (lumi_temp[0] > lumi_led[n]) lumi_led[n] = lumi_temp[0];
-			check_lumi0();
+			lumi_led[i]= imgHead.data[(axisY[i]*IMG_WIDTH + axisX[i])];
+			//if (lumi_temp[0] > lumi_threshold) state[i] = TRUE;
+			//check_lumi0();
 		}
 
-		// reconstuct value
-		if (state[0]) value_temp[0] |= 1;
-		if (state[1]) value_temp[0] |= 2;
-		if (state[2]) value_temp[0] |= 4;
-		if (state[3]) value_temp[0] |= 8;
-		if (state[4]) value_temp[0] |= 16;
-		if (state[5]) value_temp[0] |= 32;
-		if (state[6]) value_temp[0] |= 64;
-		if (state[7]) value_temp[0] |= 128;
-				
-		value_prev[0]= value_current[0];
-		value_current[0] = value_temp[0];
-		
-		// image reconst
-if (value_temp[0] == 0x3) {
-    if (value_prev[0] != 0x3) {
-	i = 0;
-	j = 0;
-	cout << "image start" << endl;
-	if (done) {
-	    // save image
-	    cout << "saving" << endl;
-	    sprintf(filename,"%d.png",GetTickCount());
-		imwrite(filename, imgResult, compression_params);	// PNG
-		// imshow( "result", imgResult);
-	} else
-	    done = 1;
-    }
-} else if (value_temp[0] == 0xc) {
-    if (value_prev[0] != 0xc) {
-	j++;
-	i = 0;
-	cout << "row: " << j << endl;
-    }
-} else if (i < RESULT_WIDTH) {
-    imgResult.data[j * RESULT_WIDTH + i] = value_temp[0];
-    i++;
-}
-
-
-		logintensity << oldFrameNo << ';' << short int(lumi_min[0]) << ';' << short int(lumi_max[0])\
-			<< ';' << short int (lumi_led[0]) << ';' << short int (lumi_led[1]) << ';' << short int (lumi_led[2]) \
-			<< ';' << short int (lumi_led[3]) << ';' << short int (lumi_led[4]) << ';' << short int (lumi_led[5]) \
-			<< ';' << short int (lumi_led[6]) << ';' << short int (lumi_led[7]) << ';' << short int (lumi_led[8]) \
-			<< ';' << unsigned short int (value_temp[0]) << endl;
-		
-		// pll iseng
-	//	if (lumi_led[8] > 40) idpConf.writeRegister(0,0xb4,5000);
-	//	else idpConf.writeRegister(0,0xb4,0);
-
+		logintensity << oldFrameNo<< ';' << short int (lumi_led[0]) \
+			<< ';' << short int (lumi_led[1]) << ';' << short int (lumi_led[2]) << ';' << short int (lumi_led[3]) \
+			<< ';' << short int (lumi_led[4]) << ';' << short int (lumi_led[5]) << ';' << short int (lumi_led[6]) \
+			<< ';' << short int (lumi_led[7]) << ';' << short int (lumi_led[8]) << ';' << short int (lumi_led[9]) \
+			<< ';' << short int (lumi_led[10]) << ';' << short int (lumi_led[11]) << ';' << short int (lumi_led[12]) \
+			<< endl;
 	} // framenum
 
 	logintensity << "stop  " << GetTickCount() << endl;
 	logintensity << "------------" << endl;
 	logintensity.close();
 	
-	//cout << "saving" << endl;
-	//imwrite("final.png", imgResult, compression_params);	// PNG
-	    
 #ifdef OPT_SAVE
 	cout << "start saving" << endl;
 	vector<int> compression_params;
