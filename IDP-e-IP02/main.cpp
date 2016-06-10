@@ -28,7 +28,7 @@
 
 #define OPT_SAVE 
 #ifdef OPT_SAVE
-#define FRAMENUM_MAX 800
+#define FRAMENUM_MAX 400
 #else
 #define FRAMENUM_MAX 4000
 #endif
@@ -56,12 +56,13 @@ IDPExpressConfig idpConf(1);
 #define ADDR_ROI1_CAM2		0x30
 #define ADDR_ROI2_CAM2		0x34
 
-#define THRESHOLD_BACKGROUND 30
-#define THRESHOLD_LOGIC 90
-bool background, background_prev;
+#define THRESHOLD_INIT 200
+#define GRAY_CODED_PROJECTION
+bool background=TRUE, background_prev=TRUE;
 
-Mat	imgHead, imgResult;
+Mat	imgHead, imgResult, imgThreshold_low, imgThreshold_high, imgThreshold;
 Mat *img;
+Mat imagein;
 
 char buffer[256];
 int nframenumber[FRAMENUM_MAX];
@@ -69,7 +70,7 @@ int index_char= 0;
 std::string str;
 
 //logs
-ofstream logintensity;
+ofstream logfile;
 char filename[20];
 
 //timer
@@ -77,15 +78,33 @@ LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
 LARGE_INTEGER Frequency;
 
 //DLP stuff
-#define SEQUENCE_MAX 33
-unsigned short int sequence;
-unsigned short int \
- bitplane[SEQUENCE_MAX]={7, 6, 4, 4, 3, 2, 1, 0,\
-						 0, 0, 0, 0, 0, 0, 0, 0,\
-						 0, 0, 0, 0, 0, 0, 0, 0,\
-						 0, 0, 0, 0, 0, 0, 0, 0, 0};
+#define BITPLANE_SEQUENCE_MAX 7 // to 0
+short int bitplane_sequence= -1;
+unsigned int offset;
 
+// Gray-code 8-bit value lookup table
+unsigned char lookup[256]={\
+	0, 1, 3, 2, 7, 6, 4, 5, 15, 14, 12, 13, 8, 9, 11, 10, \
+	31, 30, 28, 29, 24, 25, 27, 26, 16, 17, 19, 18, 23, 22, 20, 21, \
+	63, 62, 60, 61, 56, 57, 59, 58, 48, 49, 51, 50, 55, 54, 52, 53, \
+	32, 33, 35, 34, 39, 38, 36, 37, 47, 46, 44, 45, 40, 41, 43, 42, \
+	127, 126, 124, 125, 120, 121, 123, 122, 112, 113, 115, 114, 119, 118, 116, 117, \
+	96, 97, 99, 98, 103, 102, 100, 101, 111, 110, 108, 109, 104, 105, 107, 106, \
+	64, 65, 67, 66, 71, 70, 68, 69, 79, 78, 76, 77, 72, 73, 75, 74, \
+	95, 94, 92, 93, 88, 89, 91, 90, 80, 81, 83, 82, 87, 86, 84, 85, \
+	255, 254, 252, 253, 248, 249, 251, 250, 240, 241, 243, 242, 247, 246, 244, 245, \
+	224, 225, 227, 226, 231, 230, 228, 229, 239, 238, 236, 237, 232, 233, 235, 234, \
+	192, 193, 195, 194, 199, 198, 196, 197, 207, 206, 204, 205, 200, 201, 203, 202, \
+	223, 222, 220, 221, 216, 217, 219, 218, 208, 209, 211, 210, 215, 214, 212, 213, \
+	128, 129, 131, 130, 135, 134, 132, 133, 143, 142, 140, 141, 136, 137, 139, 138, \
+	159, 158, 156, 157, 152, 153, 155, 154, 144, 145, 147, 146, 151, 150, 148, 149, \
+	191, 190, 188, 189, 184, 185, 187, 186, 176, 177, 179, 178, 183, 182, 180, 181, \
+	160, 161, 163, 162, 167, 166, 164, 165, 175, 174, 172, 173, 168, 169, 171, 170, \
+	};
 
+unsigned int grayToBinary_t(unsigned int val){
+	return(lookup[val]);
+}
 
 int main(){
 	QueryPerformanceFrequency(&Frequency); 
@@ -138,9 +157,13 @@ int main(){
 	
 	// mess start here
 	unsigned int framenum;
-	imgHead			= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
-	imgResult		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
-	
+	imgHead		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
+	imgResult	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // grayscale reconstructed frame, rendered
+	imgThreshold_low	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // low-level threshold map 
+	imgThreshold_high	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // high-level threshold map
+	imgThreshold		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // binarization threshold
+	//imgResult		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC3); // color reconstructed frame
+
 #ifdef OPT_SAVE
 	img = new cv::Mat [FRAMENUM_MAX];
 	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
@@ -151,20 +174,33 @@ int main(){
 	unsigned long	nFrameNo, oldFrameNo = 0;
 	void			*pBaseAddress;
 	
+	
 	idpConf.writeRegister(0, 0xb4, 0); // just to be safe
-	logintensity.open("log.txt");
-	logintensity << "start " << GetTickCount() << endl;
-	
-	
+	logfile.open("log.txt");
+	logfile << "start " << GetTickCount() << endl;
+
+	background= TRUE;
+	background_prev= TRUE;
+	int i, j;
+ 
+	//initialize threshold map
+	for (j=0; j<IMG_HEIGHT; j++){
+		for (i=0; i<IMG_WIDTH; i++){
+			offset= j*IMG_WIDTH+i;
+			imgThreshold.data[offset]= THRESHOLD_INIT;
+		}
+	}
+	//imagein= imread( "threshold.png", 1 );
+	//cvtColor(imagein, imgThreshold, CV_BGR2GRAY);
+
 	//while(1){
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
 	waitframe:
 		if (idpConf.getLiveFrameAddress(0, &nFrameNo, &pBaseAddress) == PDC_FAILED ) break;
 		if (nFrameNo == oldFrameNo) goto waitframe;
 		oldFrameNo = nFrameNo;
-		idpUtil.setBase((UINT8 *)pBaseAddress); // head0
+		idpUtil.setBase((UINT8 *)pBaseAddress+8); // head0
 		//idpUtil.setBase((UINT8 *)pBaseAddress -8); // head1
-		//idpUtil.getHeadData(imgHead.data, 0);
 		
 		QueryPerformanceCounter(&StartingTime);
 		idpUtil.getHeadData(imgHead.data, 0);
@@ -174,45 +210,70 @@ int main(){
 		imgHead.copyTo(img[framenum]);
 #endif
 		// THE ROUTINE
+		// update high and low map for bitplane, not sure
+		// update bitplane sequence, broken
+		// stitch bit-planes if not background, kinda ok
+		// update threshold if background, not sure
 		background_prev= background;
 		background= TRUE;
-		for (int j=0; j<IMG_HEIGHT; j++){
-		for (int i=0; i<IMG_WIDTH; i++){
-			if (imgHead.data[j*IMG_WIDTH+i] > THRESHOLD_BACKGROUND){
-				background= FALSE;
-				if (imgHead.data[j*IMG_WIDTH+i] > THRESHOLD_LOGIC){
-					if (sequence<SEQUENCE_MAX) imgResult.data[j*IMG_WIDTH+i] |= (1<<(bitplane[sequence]));
-					}
+		for (j=0; j<IMG_HEIGHT; j++){
+			for (i=0; i<IMG_WIDTH; i++){
+				offset= j*IMG_WIDTH+i;
+				//if (imgHead.data[offset] < imgThreshold_low.data[offset])\
+				//	imgThreshold_low.data[offset]= imgHead.data[offset];
+				//if (imgHead.data[offset] > imgThreshold_high.data[offset])\
+				//	imgThreshold_high.data[offset]= imgHead.data[offset];
+				// not background frame i.e. greater than threshold map, stich 1, else keep 0
+				if (imgHead.data[offset] > imgThreshold.data[offset]){
+					if (background_prev==TRUE) bitplane_sequence= BITPLANE_SEQUENCE_MAX;
+					if (bitplane_sequence>-1) imgResult.data[offset] |= (1<<bitplane_sequence);
+					if (background== TRUE) background= FALSE;
+				}
+				// background frame, update threshold map
+				//else imgThreshold.data[offset]= (imgThreshold.data[offset]+imgHead.data[offset])>>1;
 				}
 			}
-		}
 
+	// if all-black found after sequence ends
+	// reconvert Gray-coded projection, ok
+	// render recovered bitplane, ok
+	// calculate new threshold map (average), not sure
+	// reset temp high and low counter, not sure
+	if (background==TRUE && background_prev==FALSE){
+		for (j=0; j<IMG_HEIGHT; j++){
+			for (i=0; i<IMG_WIDTH; i++){
+				offset= j*IMG_WIDTH+i;
+#ifdef GRAY_CODED_PROJECTION
+				imgResult.data[offset] = grayToBinary_t(imgResult.data[offset]);
+#endif
+				//imgThreshold.data[offset]= (imgThreshold.data[offset] + \
+				//	((imgThreshold_high.data[offset]+imgThreshold_low.data[offset])>>1)) >> 1;
+				//imgThreshold_high.data[offset]= 0;
+				//imgThreshold_low.data[offset]= 255;
+			}
+		}
+		// imshow("reconstructed projection", imgResult); // render the resulting image
+		}
+	
 	QueryPerformanceCounter(&EndingTime);
 	ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
 	ElapsedMicroseconds.QuadPart *= 1000000;
 	ElapsedMicroseconds.QuadPart /= Frequency.QuadPart;
-	logintensity << ElapsedMicroseconds.QuadPart << endl;
+	logfile << framenum << ';' << nFrameNo << ';' << (short int) bitplane_sequence << ';' \
+		<< background << ';' << ElapsedMicroseconds.QuadPart << endl; // add some info here
 	
-	// reset sequence if all-background frame is found
-		if (background==TRUE && background_prev==FALSE){
-		sequence= 0;
-		// render the resulting image
-		imshow("result", imgResult);
-		}
-
-	// END ROUTINE
-	
+	if (bitplane_sequence>-1) bitplane_sequence--;
 	} // framenum
 
-	logintensity << "stop  " << GetTickCount() << endl;
-	logintensity.close();
+	logfile << "stop  " << GetTickCount() << endl;
+	logfile.close();
 	
 #ifdef OPT_SAVE
 	cout << "start saving" << endl;
 	
 	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		try {
-			sprintf(filename,"%4.4d.bmp",framenum);
+			sprintf_s(filename,"%4.4d.png",framenum);
 			// for (int i=0; i<IMG_WIDTH; i++) imgHead.data[axisY[i]*IMG_WIDTH + i] = 200;
 			imwrite(filename, imgHead, compression_params);  // PNG
 			imwrite(filename, img[framenum]); // another
