@@ -21,14 +21,14 @@
 #endif
 #pragma comment(lib, "PDCLIB.lib")
 
-#define FPS			2000
+#define FPS			1000
 #define SHUTTER		2000
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	512
 
 #define OPT_SAVE 
 #ifdef OPT_SAVE
-#define FRAMENUM_MAX 400
+#define FRAMENUM_MAX 200
 #else
 #define FRAMENUM_MAX 4000
 #endif
@@ -56,16 +56,22 @@ IDPExpressConfig idpConf(1);
 #define ADDR_ROI1_CAM2		0x30
 #define ADDR_ROI2_CAM2		0x34
 
-#define THRESHOLD_INIT 200
+#define THRESHOLD_INIT 150
+#define THRESHOLD_LOW 30
+#define THRESHOLD_HIGH 200
 #define GRAY_CODED_PROJECTION
 bool background=TRUE, background_prev=TRUE;
 
-Mat	imgHead, imgResult, imgThreshold_low, imgThreshold_high, imgThreshold;
-Mat *img;
+Mat	imgHead, imgResult, imgThreshold_high, imgThreshold_low, imgThreshold;
+Mat *img, *imgOut, *imgTmp;
 Mat imagein;
 
 char buffer[256];
-int nframenumber[FRAMENUM_MAX];
+unsigned int nframenumber[FRAMENUM_MAX];
+unsigned short int nbitplane[FRAMENUM_MAX];
+bool nbackground[FRAMENUM_MAX];
+long long int nelapsedmicro[FRAMENUM_MAX];
+
 int index_char= 0;
 std::string str;
 
@@ -79,7 +85,7 @@ LARGE_INTEGER Frequency;
 
 //DLP stuff
 #define BITPLANE_SEQUENCE_MAX 7 // to 0
-short int bitplane_sequence= -1;
+short int bitplane_sequence= -1, background_sequence=BITPLANE_SEQUENCE_MAX;
 unsigned int offset;
 
 // Gray-code 8-bit value lookup table
@@ -158,22 +164,26 @@ int main(){
 	// mess start here
 	unsigned int framenum;
 	imgHead		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
-	imgResult	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // grayscale reconstructed frame, rendered
 	imgThreshold_low	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // low-level threshold map 
 	imgThreshold_high	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // high-level threshold map
 	imgThreshold		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // binarization threshold
+	imgResult	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // grayscale reconstructed frame
 	//imgResult		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC3); // color reconstructed frame
 
+	
 #ifdef OPT_SAVE
 	img = new cv::Mat [FRAMENUM_MAX];
+	imgOut = new cv::Mat [FRAMENUM_MAX];
+	imgTmp = new cv::Mat [FRAMENUM_MAX];
 	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		img[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
+		imgOut[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
+		imgTmp[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
 	}
 #endif
 
 	unsigned long	nFrameNo, oldFrameNo = 0;
 	void			*pBaseAddress;
-	
 	
 	idpConf.writeRegister(0, 0xb4, 0); // just to be safe
 	logfile.open("log.txt");
@@ -183,15 +193,21 @@ int main(){
 	background_prev= TRUE;
 	int i, j;
  
-	//initialize threshold map
-	for (j=0; j<IMG_HEIGHT; j++){
-		for (i=0; i<IMG_WIDTH; i++){
-			offset= j*IMG_WIDTH+i;
-			imgThreshold.data[offset]= THRESHOLD_INIT;
+	//initialize threshold maps
+	//imgThreshold= imread("threshold.png", CV_LOAD_IMAGE_GRAYSCALE);
+	//if (!imgThreshold.data){
+		for (j=0; j<IMG_HEIGHT; j++){
+			for (i=0; i<IMG_WIDTH; i++){
+				offset= j*IMG_WIDTH+i;
+				imgThreshold.data[offset]= THRESHOLD_INIT;
+				imgThreshold_high.data[offset]= THRESHOLD_LOW;
+				imgThreshold_low.data[offset]= THRESHOLD_HIGH;
+			}
 		}
-	}
-	//imagein= imread( "threshold.png", 1 );
-	//cvtColor(imagein, imgThreshold, CV_BGR2GRAY);
+	//}
+	//imshow("threshold", imgThreshold);
+	
+	
 
 	//while(1){
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
@@ -201,44 +217,43 @@ int main(){
 		oldFrameNo = nFrameNo;
 		idpUtil.setBase((UINT8 *)pBaseAddress+8); // head0
 		//idpUtil.setBase((UINT8 *)pBaseAddress -8); // head1
-		
-		QueryPerformanceCounter(&StartingTime);
+
 		idpUtil.getHeadData(imgHead.data, 0);
-		
 #ifdef OPT_SAVE
 		//for later saving
 		imgHead.copyTo(img[framenum]);
 #endif
 		// THE ROUTINE
 		// update high and low map for bitplane, not sure
-		// update bitplane sequence, broken
-		// stitch bit-planes if not background, kinda ok
 		// update threshold if background, not sure
+		// update bitplane sequence, ok
+		// stitch bit-planes if not background, ok
+		QueryPerformanceCounter(&StartingTime);
 		background_prev= background;
 		background= TRUE;
 		for (j=0; j<IMG_HEIGHT; j++){
 			for (i=0; i<IMG_WIDTH; i++){
 				offset= j*IMG_WIDTH+i;
-				//if (imgHead.data[offset] < imgThreshold_low.data[offset])\
-				//	imgThreshold_low.data[offset]= imgHead.data[offset];
-				//if (imgHead.data[offset] > imgThreshold_high.data[offset])\
-				//	imgThreshold_high.data[offset]= imgHead.data[offset];
 				// not background frame i.e. greater than threshold map, stich 1, else keep 0
 				if (imgHead.data[offset] > imgThreshold.data[offset]){
-					if (background_prev==TRUE) bitplane_sequence= BITPLANE_SEQUENCE_MAX;
+					if (background_prev==TRUE){
+						bitplane_sequence= BITPLANE_SEQUENCE_MAX;
+						imgResult.data[offset]= 0;
+						imgThreshold_high.data[offset]= THRESHOLD_LOW;
+						imgThreshold_low.data[offset]= THRESHOLD_HIGH;
+					}
 					if (bitplane_sequence>-1) imgResult.data[offset] |= (1<<bitplane_sequence);
 					if (background== TRUE) background= FALSE;
 				}
-				// background frame, update threshold map
-				//else imgThreshold.data[offset]= (imgThreshold.data[offset]+imgHead.data[offset])>>1;
+				if (imgHead.data[offset] > imgThreshold_high.data[offset]) imgThreshold_high.data[offset]= imgHead.data[offset];
+				if (imgHead.data[offset] < imgThreshold_low.data[offset]) imgThreshold_low.data[offset]= imgHead.data[offset];
 				}
 			}
-
+	
 	// if all-black found after sequence ends
 	// reconvert Gray-coded projection, ok
 	// render recovered bitplane, ok
 	// calculate new threshold map (average), not sure
-	// reset temp high and low counter, not sure
 	if (background==TRUE && background_prev==FALSE){
 		for (j=0; j<IMG_HEIGHT; j++){
 			for (i=0; i<IMG_WIDTH; i++){
@@ -246,25 +261,37 @@ int main(){
 #ifdef GRAY_CODED_PROJECTION
 				imgResult.data[offset] = grayToBinary_t(imgResult.data[offset]);
 #endif
-				//imgThreshold.data[offset]= (imgThreshold.data[offset] + \
-				//	((imgThreshold_high.data[offset]+imgThreshold_low.data[offset])>>1)) >> 1;
-				//imgThreshold_high.data[offset]= 0;
-				//imgThreshold_low.data[offset]= 255;
+				imgThreshold.data[offset]= (imgThreshold_high.data[offset]>>1) + (imgThreshold_low.data[offset]>>1);
 			}
 		}
-		// imshow("reconstructed projection", imgResult); // render the resulting image
+		//imshow("reconstructed projection", imgResult); // render the resulting image
+		//waitKey(1);
 		}
 	
 	QueryPerformanceCounter(&EndingTime);
 	ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
 	ElapsedMicroseconds.QuadPart *= 1000000;
 	ElapsedMicroseconds.QuadPart /= Frequency.QuadPart;
-	logfile << framenum << ';' << nFrameNo << ';' << (short int) bitplane_sequence << ';' \
-		<< background << ';' << ElapsedMicroseconds.QuadPart << endl; // add some info here
+
+	nframenumber[framenum] = nFrameNo;
+	nbitplane[framenum] = bitplane_sequence;
+	nbackground[framenum] = background;
+	nelapsedmicro[framenum] = ElapsedMicroseconds.QuadPart;
 	
 	if (bitplane_sequence>-1) bitplane_sequence--;
-	} // framenum
+	//imgThreshold_high.copyTo(imgTmp[framenum]);	
+	//imgThreshold_high.copyTo(imgOut[framenum]);
+	//imgThreshold_low.copyTo(imgTmp[framenum]);	
+	imgOut[framenum]= imgThreshold_high.clone();
+	imgTmp[framenum]= imgThreshold.clone();
+	} // framenum end
 
+
+	//logfile
+	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
+		logfile << framenum << ';' << nframenumber[framenum] << ';' << (short int) nbitplane[framenum] << ';' \
+			<< nbackground[framenum] << ';' << nelapsedmicro[framenum] << endl; // add some info here
+	}
 	logfile << "stop  " << GetTickCount() << endl;
 	logfile.close();
 	
@@ -273,10 +300,13 @@ int main(){
 	
 	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		try {
-			sprintf_s(filename,"%4.4d.png",framenum);
-			// for (int i=0; i<IMG_WIDTH; i++) imgHead.data[axisY[i]*IMG_WIDTH + i] = 200;
-			imwrite(filename, imgHead, compression_params);  // PNG
+			sprintf_s(filename,"b%4.4d.bmp",framenum);
 			imwrite(filename, img[framenum]); // another
+			sprintf_s(filename,"h%4.4d.bmp",framenum);
+			imwrite(filename, imgOut[framenum]); // another
+			sprintf_s(filename,"l%4.4d.bmp",framenum);
+			imwrite(filename, imgTmp[framenum]); // another
+
 		}
 		catch (runtime_error& ex) {
 			fprintf(stderr, "Exception converting image to PNG format: %s\n", ex.what());
