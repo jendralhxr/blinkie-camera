@@ -282,7 +282,7 @@ int main(){
 	//imgThreshold_high.copyTo(imgTmp[framenum]);	
 	//imgThreshold_high.copyTo(imgOut[framenum]);
 	//imgThreshold_low.copyTo(imgTmp[framenum]);	
-	imgOut[framenum]= imgThreshold_high.clone();
+	imgOut[framenum]= imgResult.clone();
 	imgTmp[framenum]= imgThreshold.clone();
 	} // framenum end
 
@@ -302,9 +302,9 @@ int main(){
 		try {
 			sprintf_s(filename,"b%4.4d.bmp",framenum);
 			imwrite(filename, img[framenum]); // another
-			sprintf_s(filename,"h%4.4d.bmp",framenum);
+			sprintf_s(filename,"r%4.4d.bmp",framenum);
 			imwrite(filename, imgOut[framenum]); // another
-			sprintf_s(filename,"l%4.4d.bmp",framenum);
+			sprintf_s(filename,"t%4.4d.bmp",framenum);
 			imwrite(filename, imgTmp[framenum]); // another
 
 		}
