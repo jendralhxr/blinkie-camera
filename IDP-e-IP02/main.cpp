@@ -28,7 +28,7 @@
 
 #define OPT_SAVE 
 #ifdef OPT_SAVE
-#define FRAMENUM_MAX 200
+#define FRAMENUM_MAX 400
 #else
 #define FRAMENUM_MAX 4000
 #endif
@@ -56,13 +56,12 @@ IDPExpressConfig idpConf(1);
 #define ADDR_ROI1_CAM2		0x30
 #define ADDR_ROI2_CAM2		0x34
 
-#define THRESHOLD_INIT 150
+#define THRESHOLD_INIT 60
 #define THRESHOLD_LOW 30
-#define THRESHOLD_HIGH 200
 #define GRAY_CODED_PROJECTION
-bool background=TRUE, background_prev=TRUE;
+bool background=FALSE, background_prev=FALSE;
 
-Mat	imgHead, imgResult, imgThreshold_high, imgThreshold_low, imgThreshold;
+Mat	imgHead, imgResult, imgHigh, imgThreshold, imgOutput, imgTrs;
 Mat *img, *imgOut, *imgTmp;
 Mat imagein;
 
@@ -86,7 +85,7 @@ LARGE_INTEGER Frequency;
 //DLP stuff
 #define BITPLANE_SEQUENCE_MAX 7 // to 0
 short int bitplane_sequence= -1, background_sequence=BITPLANE_SEQUENCE_MAX;
-unsigned int offset;
+int i, j, offset;
 
 // Gray-code 8-bit value lookup table
 unsigned char lookup[256]={\
@@ -114,11 +113,6 @@ unsigned int grayToBinary_t(unsigned int val){
 
 int main(){
 	QueryPerformanceFrequency(&Frequency); 
-	//saving as PNG
-	vector<int> compression_params;
-	compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
-	compression_params.push_back(9);
-
 	if (idpConf.init()									== PDC_FAILED) return 1;
 	if (idpConf.setRecordRate(FPS)						== PDC_FAILED) return 1;
 	if (idpConf.setShutterSpeed(SHUTTER)				== PDC_FAILED) return 1;
@@ -164,12 +158,12 @@ int main(){
 	// mess start here
 	unsigned int framenum;
 	imgHead		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
-	imgThreshold_low	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // low-level threshold map 
-	imgThreshold_high	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // high-level threshold map
+	imgHigh	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // high-level threshold map
 	imgThreshold		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // binarization threshold
 	imgResult	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // grayscale reconstructed frame
 	//imgResult		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC3); // color reconstructed frame
-
+	imgOutput	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // rendered frame
+	imgTrs = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
 	
 #ifdef OPT_SAVE
 	img = new cv::Mat [FRAMENUM_MAX];
@@ -189,10 +183,7 @@ int main(){
 	logfile.open("log.txt");
 	logfile << "start " << GetTickCount() << endl;
 
-	background= TRUE;
-	background_prev= TRUE;
-	int i, j;
- 
+	
 	//initialize threshold maps
 	//imgThreshold= imread("threshold.png", CV_LOAD_IMAGE_GRAYSCALE);
 	//if (!imgThreshold.data){
@@ -200,15 +191,15 @@ int main(){
 			for (i=0; i<IMG_WIDTH; i++){
 				offset= j*IMG_WIDTH+i;
 				imgThreshold.data[offset]= THRESHOLD_INIT;
-				imgThreshold_high.data[offset]= THRESHOLD_LOW;
-				imgThreshold_low.data[offset]= THRESHOLD_HIGH;
+				imgHigh.data[offset]= THRESHOLD_LOW;
+				imgResult.data[offset]= 0; // or 0, if that matters
+				imgOutput.data[offset]= 0;
+				imgTrs.data[offset]= 0;
 			}
 		}
 	//}
 	//imshow("threshold", imgThreshold);
 	
-	
-
 	//while(1){
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
 	waitframe:
@@ -218,54 +209,51 @@ int main(){
 		idpUtil.setBase((UINT8 *)pBaseAddress+8); // head0
 		//idpUtil.setBase((UINT8 *)pBaseAddress -8); // head1
 
+		QueryPerformanceCounter(&StartingTime);
+		background_prev= background;
+		background= TRUE;
+
 		idpUtil.getHeadData(imgHead.data, 0);
 #ifdef OPT_SAVE
 		//for later saving
 		imgHead.copyTo(img[framenum]);
 #endif
 		// THE ROUTINE
-		// update high and low map for bitplane, not sure
-		// update threshold if background, not sure
+		// update high and low map for bitplane, ok
 		// update bitplane sequence, ok
 		// stitch bit-planes if not background, ok
-		QueryPerformanceCounter(&StartingTime);
-		background_prev= background;
-		background= TRUE;
-		for (j=0; j<IMG_HEIGHT; j++){
-			for (i=0; i<IMG_WIDTH; i++){
-				offset= j*IMG_WIDTH+i;
-				// not background frame i.e. greater than threshold map, stich 1, else keep 0
-				if (imgHead.data[offset] > imgThreshold.data[offset]){
-					if (background_prev==TRUE){
-						bitplane_sequence= BITPLANE_SEQUENCE_MAX;
-						imgResult.data[offset]= 0;
-						imgThreshold_high.data[offset]= THRESHOLD_LOW;
-						imgThreshold_low.data[offset]= THRESHOLD_HIGH;
-					}
-					if (bitplane_sequence>-1) imgResult.data[offset] |= (1<<bitplane_sequence);
-					if (background== TRUE) background= FALSE;
-				}
-				if (imgHead.data[offset] > imgThreshold_high.data[offset]) imgThreshold_high.data[offset]= imgHead.data[offset];
-				if (imgHead.data[offset] < imgThreshold_low.data[offset]) imgThreshold_low.data[offset]= imgHead.data[offset];
-				}
+	offset=IMG_HEIGHT*IMG_WIDTH-1;
+bitplane:
+	// not background frame i.e. greater than threshold map, stich 1, else keep 0
+	if (imgHead.data[offset] > imgThreshold.data[offset]){ // new bitplane sequence
+		if (background==TRUE){
+			background= FALSE;
+			if (background_prev==TRUE) bitplane_sequence= BITPLANE_SEQUENCE_MAX;
 			}
-	
-	// if all-black found after sequence ends
-	// reconvert Gray-coded projection, ok
-	// render recovered bitplane, ok
-	// calculate new threshold map (average), not sure
-	if (background==TRUE && background_prev==FALSE){
-		for (j=0; j<IMG_HEIGHT; j++){
-			for (i=0; i<IMG_WIDTH; i++){
-				offset= j*IMG_WIDTH+i;
-#ifdef GRAY_CODED_PROJECTION
-				imgResult.data[offset] = grayToBinary_t(imgResult.data[offset]);
-#endif
-				imgThreshold.data[offset]= (imgThreshold_high.data[offset]>>1) + (imgThreshold_low.data[offset]>>1);
-			}
+		if (background==FALSE && background_prev==TRUE) imgResult.data[offset]= 0;
+		if (bitplane_sequence>-1) imgResult.data[offset] |= (1<<bitplane_sequence);
 		}
-		//imshow("reconstructed projection", imgResult); // render the resulting image
-		//waitKey(1);
+	if (imgHead.data[offset] > imgHigh.data[offset]) imgHigh.data[offset]= imgHead.data[offset];
+	offset--;
+	if (offset!=-1) goto bitplane;
+	
+
+	// if background-only frame found after sequence ends
+	// reconvert Gray-coded projection, ok
+	// calculate new threshold map (half of maximum), k
+	if (background==TRUE && background_prev==FALSE && bitplane_sequence==-1){
+		offset=IMG_HEIGHT*IMG_WIDTH-1;
+thresheval:	
+#ifdef GRAY_CODED_PROJECTION
+		imgResult.data[offset] = grayToBinary_t(imgResult.data[offset]);
+#endif
+		// update treshold map
+		imgThreshold.data[offset]= imgHigh.data[offset]>>1;
+		imgHigh.data[offset]= THRESHOLD_LOW;
+		offset--;
+		if (offset!=-1) goto thresheval;
+		//imgOutput= imgResult.clone();
+		imgTrs= imgThreshold.clone();
 		}
 	
 	QueryPerformanceCounter(&EndingTime);
@@ -278,14 +266,13 @@ int main(){
 	nbackground[framenum] = background;
 	nelapsedmicro[framenum] = ElapsedMicroseconds.QuadPart;
 	
-	if (bitplane_sequence>-1) bitplane_sequence--;
-	//imgThreshold_high.copyTo(imgTmp[framenum]);	
-	//imgThreshold_high.copyTo(imgOut[framenum]);
-	//imgThreshold_low.copyTo(imgTmp[framenum]);	
-	imgOut[framenum]= imgResult.clone();
-	imgTmp[framenum]= imgThreshold.clone();
-	} // framenum end
+	if (bitplane_sequence>-1) bitplane_sequence--; // or jumps, etc
 
+	//imgHigh.copyTo(imgOut[framenum]);
+	//imgThreshold.copyTo(imgTmp[framenum]);
+	//imgOut[framenum]= imgOutput.clone();
+	imgTmp[framenum]= imgTrs.clone();
+	} // framenum end
 
 	//logfile
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
@@ -302,9 +289,9 @@ int main(){
 		try {
 			sprintf_s(filename,"b%4.4d.bmp",framenum);
 			imwrite(filename, img[framenum]); // another
-			sprintf_s(filename,"r%4.4d.bmp",framenum);
-			imwrite(filename, imgOut[framenum]); // another
-			sprintf_s(filename,"t%4.4d.bmp",framenum);
+			sprintf_s(filename,"h%4.4d.bmp",framenum);
+			//imwrite(filename, imgOut[framenum]); // another
+			sprintf_s(filename,"l%4.4d.bmp",framenum);
 			imwrite(filename, imgTmp[framenum]); // another
 
 		}
