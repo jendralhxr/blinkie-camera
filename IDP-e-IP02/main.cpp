@@ -59,7 +59,7 @@ IDPExpressConfig idpConf(1);
 #define THRESHOLD_INIT 80
 #define THRESHOLD_LOW 30
 #define THRESHOLD_UPDATE_INTERVAL 4
-#define BLANKING_OUT_FRAMES 6
+#define BLANKING_OUT_FRAMES 5
 #define GRAY_CODED_PROJECTION
 
 bool background=FALSE, background_prev=FALSE;
@@ -235,16 +235,16 @@ int main(){
 bitplane:
 	// not background frame i.e. greater than threshold map, stich 1, else keep 0
 	// CHECK THIS!!
-	if (imgHead.data[offset] > THRESHOLD_INIT){ 
-	//if (imgHead.data[offset] > imgThreshold.data[offset]){ 
+	if (imgHead.data[offset] > imgThreshold.data[offset]){ 
 		if (background==TRUE){
 			background= FALSE;
 			if (blanking_sequence>BLANKING_OUT_FRAMES) bitplane_sequence= BITPLANE_SEQUENCE_MAX; // new bitplane sequence
 			blanking_sequence= 0;
 		}
 		if (bitplane_sequence==BITPLANE_SEQUENCE_MAX) imgResult.data[offset]= 0;
-		if (skipped && (bitplane_sequence > 10)) imgResult.data[offset] |= (1<<shift[bitplane_sequence]);
-		else if (bitplane_sequence==23 || bitplane_sequence==24 ||  bitplane_sequence==20 || bitplane_sequence==17 || bitplane_sequence==14 || \
+		if (skipped && (bitplane_sequence==22 || bitplane_sequence==19 || bitplane_sequence==16 || bitplane_sequence==13)) \
+			imgResult.data[offset] |= (1<<shift[bitplane_sequence]);
+		else if (bitplane_sequence==23 || bitplane_sequence==20 || bitplane_sequence==17 || bitplane_sequence==14 || \
 			bitplane_sequence==11 || bitplane_sequence==8 || bitplane_sequence==5 || bitplane_sequence==2 ) \
 			imgResult.data[offset] |= (1<<shift[bitplane_sequence]);
 		
@@ -258,24 +258,22 @@ bitplane:
 	offset--;
 	if (offset!=-1) goto bitplane;
 	
-	// single pixel check
-	//pointvalue[framenum] = imgHead.data[309*IMG_WIDTH+200];
-	
 	// if background-only frame found after sequence ends
 	// reconvert Gray-coded projection, ok
 	// calculate new threshold map (half of maximum), k
-	if (blanking_sequence>BLANKING_OUT_FRAMES || bitplane_sequence==0){
+	if (bitplane_sequence==0){
+		bitplane_sequence= -1;
 		offset=IMG_HEIGHT*IMG_WIDTH-1;
 thresheval:	
 #ifdef GRAY_CODED_PROJECTION
 		imgResult.data[offset] = grayToBinary_t(imgResult.data[offset]);
 #endif
 		// update treshold map
-		imgThreshold.data[offset]= (imgThreshold.data[offset]>>1) + (imgHigh.data[offset]>>2);
+		imgThreshold.data[offset]= imgHigh.data[offset]>>1;
 		imgHigh.data[offset]= THRESHOLD_LOW;
 		offset--;
 		if (offset!=-1) goto thresheval;
-		//imgOutput= imgResult.clone();
+		imgOutput= imgResult.clone();
 		imgTrs= imgThreshold.clone();
 		}
 	
@@ -292,10 +290,10 @@ thresheval:
 
 	if (bitplane_sequence>0) bitplane_sequence--; // next bitplane sequence
 
-	imgHigh.copyTo(imgOut[framenum]);
-	imgThreshold.copyTo(imgTmp[framenum]);
-	//imgOut[framenum]= imgOutput.clone();
-	//imgTmp[framenum]= imgTrs.clone();
+	//imgHigh.copyTo(imgOut[framenum]);
+	//imgThreshold.copyTo(imgTmp[framenum]);
+	imgOut[framenum]= imgOutput.clone();
+	imgTmp[framenum]= imgTrs.clone();
 	
 	} // framenum end
 
@@ -318,7 +316,7 @@ thresheval:
 			imwrite(filename, img[framenum]); // another
 			sprintf_s(filename,"t%4.4d.bmp",framenum);
 			imwrite(filename, imgTmp[framenum]); // another
-			sprintf_s(filename,"h%4.4d.bmp",framenum);
+			sprintf_s(filename,"r%4.4d.bmp",framenum);
 			imwrite(filename, imgOut[framenum]); // another
 		}
 		catch (runtime_error& ex) {
