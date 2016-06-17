@@ -58,10 +58,12 @@ IDPExpressConfig idpConf(1);
 
 #define THRESHOLD_INIT 80
 #define THRESHOLD_LOW 30
-#define BLANKING_OUT_FRAMES 5
+#define THRESHOLD_UPDATE_INTERVAL 4
+#define BLANKING_OUT_FRAMES 6
 #define GRAY_CODED_PROJECTION
 
 bool background=FALSE, background_prev=FALSE;
+bool skipped;
 
 Mat	imgHead, imgResult, imgHigh, imgThreshold, imgOutput, imgTrs;
 Mat *img, *imgOut, *imgTmp;
@@ -86,8 +88,9 @@ LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
 LARGE_INTEGER Frequency;
 
 //DLP stuff
-#define BITPLANE_SEQUENCE_MAX 23 // to 0
-short int bitplane_sequence= -1;
+#define BITPLANE_SEQUENCE_MAX 24 // to 0
+unsigned char shift[BITPLANE_SEQUENCE_MAX]={7,7,7,6,6,6,5,5,5,4,4,4,3,3,3,2,2,2,1,1,1,0,0,0};
+char bitplane_sequence;
 unsigned char blanking_sequence;
 int i, j, offset;
 
@@ -220,7 +223,15 @@ int main(){
 		// update high threshold map for bitplane, ok
 		// update bitplane sequence, ok
 		// stitch bit-planes if not background, ok
-	offset=IMG_HEIGHT*IMG_WIDTH-1;
+		
+		//check for one skipped frame
+		skipped= FALSE;
+		if (nFrameNo!=nframenumber[framenum-1]+1){
+			bitplane_sequence--;
+			skipped= TRUE;
+		}
+		
+		offset=IMG_HEIGHT*IMG_WIDTH-1;
 bitplane:
 	// not background frame i.e. greater than threshold map, stich 1, else keep 0
 	// CHECK THIS!!
@@ -228,39 +239,44 @@ bitplane:
 	//if (imgHead.data[offset] > imgThreshold.data[offset]){ 
 		if (background==TRUE){
 			background= FALSE;
+			if (blanking_sequence>BLANKING_OUT_FRAMES) bitplane_sequence= BITPLANE_SEQUENCE_MAX; // new bitplane sequence
 			blanking_sequence= 0;
-			if (blanking_sequence>BLANKING_OUT_FRAMES && bitplane_sequence==-1) bitplane_sequence= BITPLANE_SEQUENCE_MAX; // new bitplane sequence
 		}
-		if (background==FALSE && background_prev==TRUE) imgResult.data[offset]= 0;
-		//if (bitplane_sequence>-1) imgResult.data[offset] |= (1<<bitplane_sequence);
+		if (bitplane_sequence==BITPLANE_SEQUENCE_MAX) imgResult.data[offset]= 0;
+		if (skipped && (bitplane_sequence > 10)) imgResult.data[offset] |= (1<<shift[bitplane_sequence]);
+		else if (bitplane_sequence==23 || bitplane_sequence==24 ||  bitplane_sequence==20 || bitplane_sequence==17 || bitplane_sequence==14 || \
+			bitplane_sequence==11 || bitplane_sequence==8 || bitplane_sequence==5 || bitplane_sequence==2 ) \
+			imgResult.data[offset] |= (1<<shift[bitplane_sequence]);
+		
 		}
 	if ((background==TRUE) && (background_prev==TRUE)){
 		blanking_sequence= nblanking[framenum-1]+1;
+		//blanking_sequence++; // why wouldn't this just work? T_T
 	}
-	//logfile << 'b' <<blanking_sequence << endl;
-	if (imgHead.data[offset] > imgHigh.data[offset]) imgHigh.data[offset]= imgHead.data[offset];
+	if ((imgHead.data[offset] > imgHigh.data[offset]) && !(framenum%THRESHOLD_UPDATE_INTERVAL))\
+		imgHigh.data[offset]= imgHead.data[offset];
 	offset--;
 	if (offset!=-1) goto bitplane;
 	
 	// single pixel check
-	pointvalue[framenum] = imgHead.data[309*IMG_WIDTH+200];
+	//pointvalue[framenum] = imgHead.data[309*IMG_WIDTH+200];
 	
 	// if background-only frame found after sequence ends
 	// reconvert Gray-coded projection, ok
 	// calculate new threshold map (half of maximum), k
-	if (blanking_sequence>BLANKING_OUT_FRAMES || bitplane_sequence==-1){
+	if (blanking_sequence>BLANKING_OUT_FRAMES || bitplane_sequence==0){
 		offset=IMG_HEIGHT*IMG_WIDTH-1;
 thresheval:	
 #ifdef GRAY_CODED_PROJECTION
 		imgResult.data[offset] = grayToBinary_t(imgResult.data[offset]);
 #endif
 		// update treshold map
-		imgThreshold.data[offset]= imgHigh.data[offset]>>1;
+		imgThreshold.data[offset]= (imgThreshold.data[offset]>>1) + (imgHigh.data[offset]>>2);
 		imgHigh.data[offset]= THRESHOLD_LOW;
 		offset--;
 		if (offset!=-1) goto thresheval;
 		//imgOutput= imgResult.clone();
-		//imgTrs= imgThreshold.clone();
+		imgTrs= imgThreshold.clone();
 		}
 	
 	QueryPerformanceCounter(&EndingTime);
@@ -274,19 +290,21 @@ thresheval:
 	nelapsedmicro[framenum] = ElapsedMicroseconds.QuadPart;
 	nblanking[framenum]= blanking_sequence;
 
-	if (bitplane_sequence>-1) bitplane_sequence--; // next bitplane sequence
+	if (bitplane_sequence>0) bitplane_sequence--; // next bitplane sequence
 
-	//imgHigh.copyTo(imgOut[framenum]);
-	//imgThreshold.copyTo(imgTmp[framenum]);
+	imgHigh.copyTo(imgOut[framenum]);
+	imgThreshold.copyTo(imgTmp[framenum]);
 	//imgOut[framenum]= imgOutput.clone();
-	imgTmp[framenum]= imgTrs.clone();
+	//imgTmp[framenum]= imgTrs.clone();
 	
 	} // framenum end
+
+
 
 	//logging
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		logfile << framenum << ';' << nframenumber[framenum] << ';' << nbackground[framenum] << ';' << (short int) nblanking[framenum] << ';' \
-		<< (short int) pointvalue[framenum] << ';' << nelapsedmicro[framenum] << endl; // add some info here
+			<< (short int) nbitplane[framenum] << ';' << nelapsedmicro[framenum] << endl; // add some info here
 	}
 	logfile << "stop  " << GetTickCount() << endl;
 	logfile.close();
@@ -296,13 +314,12 @@ thresheval:
 	
 	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		try {
-			sprintf_s(filename,"b%4.4d.bmp",framenum);
+			sprintf_s(filename,"c%4.4d.bmp",framenum);
 			imwrite(filename, img[framenum]); // another
-			sprintf_s(filename,"h%4.4d.bmp",framenum);
-			//imwrite(filename, imgOut[framenum]); // another
 			sprintf_s(filename,"t%4.4d.bmp",framenum);
-			//imwrite(filename, imgTmp[framenum]); // another
-
+			imwrite(filename, imgTmp[framenum]); // another
+			sprintf_s(filename,"h%4.4d.bmp",framenum);
+			imwrite(filename, imgOut[framenum]); // another
 		}
 		catch (runtime_error& ex) {
 			fprintf(stderr, "Exception converting image to PNG format: %s\n", ex.what());
