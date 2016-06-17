@@ -24,11 +24,11 @@
 #define FPS			1000
 #define SHUTTER		1000
 #define IMG_WIDTH	512
-#define IMG_HEIGHT	352
+#define IMG_HEIGHT	512
 
 #define OPT_SAVE 
 #ifdef OPT_SAVE
-#define FRAMENUM_MAX 300
+#define FRAMENUM_MAX 5000
 #else
 #define FRAMENUM_MAX 4000
 #endif
@@ -60,7 +60,8 @@ IDPExpressConfig idpConf(1);
 #define THRESHOLD_LOW 30
 #define THRESHOLD_UPDATE_INTERVAL 4
 #define BLANKING_OUT_FRAMES 5
-#define GRAY_CODED_PROJECTION
+//#define GRAY_CODED_PROJECTION
+#define NOISE_VARIANCE 20
 
 bool background=FALSE, background_prev=FALSE;
 bool skipped;
@@ -89,7 +90,8 @@ LARGE_INTEGER Frequency;
 
 //DLP stuff
 #define BITPLANE_SEQUENCE_MAX 24 // to 0
-unsigned char shift[BITPLANE_SEQUENCE_MAX]={7,7,7,6,6,6,5,5,5,4,4,4,3,3,3,2,2,2,1,1,1,0,0,0};
+unsigned char shift[BITPLANE_SEQUENCE_MAX]={0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, \
+	5, 5, 5, 6, 6, 6, 7, 7, 7};
 char bitplane_sequence;
 unsigned char blanking_sequence;
 int i, j, offset;
@@ -111,12 +113,15 @@ unsigned char lookup[256]={\
 	128, 129, 131, 130, 135, 134, 132, 133, 143, 142, 140, 141, 136, 137, 139, 138, \
 	159, 158, 156, 157, 152, 153, 155, 154, 144, 145, 147, 146, 151, 150, 148, 149, \
 	191, 190, 188, 189, 184, 185, 187, 186, 176, 177, 179, 178, 183, 182, 180, 181, \
-	160, 161, 163, 162, 167, 166, 164, 165, 175, 174, 172, 173, 168, 169, 171, 170, \
+	160, 161, 163, 162, 167, 166, 164, 165, 175, 174, 172, 173, 168, 169, 171, 170 \
 	};
 
 unsigned int grayToBinary_t(unsigned int val){
 	return(lookup[val]);
 }
+
+Size size(IMG_WIDTH,2*IMG_HEIGHT);
+Mat ResultEnd;
 
 int main(){
 	QueryPerformanceFrequency(&Frequency); 
@@ -219,10 +224,6 @@ int main(){
 #ifdef OPT_SAVE
 		imgHead.copyTo(img[framenum]); //for later saving
 #endif
-		// THE ROUTINE
-		// update high threshold map for bitplane, ok
-		// update bitplane sequence, ok
-		// stitch bit-planes if not background, ok
 		
 		//check for one skipped frame
 		skipped= FALSE;
@@ -231,11 +232,15 @@ int main(){
 			skipped= TRUE;
 		}
 		
+		// THE ROUTINE
+		// update high threshold map for bitplane, ok
+		// update bitplane sequence, ok
+		// stitch bit-planes if not background, ok
 		offset=IMG_HEIGHT*IMG_WIDTH-1;
 bitplane:
 	// not background frame i.e. greater than threshold map, stich 1, else keep 0
 	// CHECK THIS!!
-	if (imgHead.data[offset] > imgThreshold.data[offset]){ 
+	if (imgHead.data[offset] > imgThreshold.data[offset]+NOISE_VARIANCE){ 
 		if (background==TRUE){
 			background= FALSE;
 			if (blanking_sequence>BLANKING_OUT_FRAMES) bitplane_sequence= BITPLANE_SEQUENCE_MAX; // new bitplane sequence
@@ -275,12 +280,18 @@ thresheval:
 		if (offset!=-1) goto thresheval;
 		imgOutput= imgResult.clone();
 		imgTrs= imgThreshold.clone();
+		//imgThreshold.copyTo(imgTrs);
 		}
 	
 	QueryPerformanceCounter(&EndingTime);
 	ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
 	ElapsedMicroseconds.QuadPart *= 1000000;
 	ElapsedMicroseconds.QuadPart /= Frequency.QuadPart;
+
+	//imgHigh.copyTo(imgOut[framenum]);
+	//imgThreshold.copyTo(imgTmp[framenum]);
+	imgOut[framenum]= imgOutput.clone();
+	imgTmp[framenum]= imgTrs.clone();
 
 	nframenumber[framenum] = nFrameNo;
 	nbitplane[framenum] = bitplane_sequence;
@@ -290,11 +301,6 @@ thresheval:
 
 	if (bitplane_sequence>0) bitplane_sequence--; // next bitplane sequence
 
-	//imgHigh.copyTo(imgOut[framenum]);
-	//imgThreshold.copyTo(imgTmp[framenum]);
-	imgOut[framenum]= imgOutput.clone();
-	imgTmp[framenum]= imgTrs.clone();
-	
 	} // framenum end
 
 
@@ -318,6 +324,10 @@ thresheval:
 			imwrite(filename, imgTmp[framenum]); // another
 			sprintf_s(filename,"r%4.4d.bmp",framenum);
 			imwrite(filename, imgOut[framenum]); // another
+			sprintf_s(filename,"s%4.4d.bmp",framenum);
+			//resize(imgOut[framenum], ResultEnd, size, CV_INTER_AREA);
+			//imwrite(filename, ResultEnd); // another
+			
 		}
 		catch (runtime_error& ex) {
 			fprintf(stderr, "Exception converting image to PNG format: %s\n", ex.what());
