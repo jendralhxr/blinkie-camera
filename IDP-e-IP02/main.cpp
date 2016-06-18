@@ -30,7 +30,7 @@
 #ifdef OPT_SAVE
 #define FRAMENUM_MAX 5000
 #else
-#define FRAMENUM_MAX 4000
+#define FRAMENUM_MAX 50000
 #endif
 
 using namespace IDPExpress;
@@ -56,12 +56,12 @@ IDPExpressConfig idpConf(1);
 #define ADDR_ROI1_CAM2		0x30
 #define ADDR_ROI2_CAM2		0x34
 
-#define THRESHOLD_INIT 80
+#define THRESHOLD_INIT 100
 #define THRESHOLD_LOW 30
 #define THRESHOLD_UPDATE_INTERVAL 4
 #define BLANKING_OUT_FRAMES 5
 //#define GRAY_CODED_PROJECTION
-#define NOISE_VARIANCE 20
+#define NOISE_VARIANCE 19
 
 bool background=FALSE, background_prev=FALSE;
 bool skipped;
@@ -93,7 +93,7 @@ LARGE_INTEGER Frequency;
 unsigned char shift[BITPLANE_SEQUENCE_MAX]={0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, \
 	5, 5, 5, 6, 6, 6, 7, 7, 7};
 char bitplane_sequence;
-unsigned char blanking_sequence;
+unsigned char blanking_sequence, blanking_prev;
 int i, j, offset;
 
 // Gray-code 8-bit value lookup table
@@ -175,7 +175,7 @@ int main(){
 	imgResult	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // grayscale reconstructed frame
 	//imgResult		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC3); // color reconstructed frame
 	imgOutput	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // rendered frame
-	imgTrs = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
+	imgTrs = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // whole-frame threshold
 	
 #ifdef OPT_SAVE
 	img = new cv::Mat [FRAMENUM_MAX];
@@ -188,7 +188,7 @@ int main(){
 	}
 #endif
 
-	unsigned long	nFrameNo, oldFrameNo = 0;
+	unsigned long	nFrameNo, oldFrameNo = 0, framenum_prev;
 	void			*pBaseAddress;
 	
 	idpConf.writeRegister(0, 0xb4, 0); // just to be safe
@@ -207,9 +207,12 @@ int main(){
 		}
 	}
 	
-	//while(1){
+//#ifdef OPT_SAVE
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
-	waitframe:
+//#else 
+//	while(1){
+//#endif
+		waitframe:
 		if (idpConf.getLiveFrameAddress(0, &nFrameNo, &pBaseAddress) == PDC_FAILED ) break;
 		if (nFrameNo == oldFrameNo) goto waitframe;
 		oldFrameNo = nFrameNo;
@@ -227,7 +230,11 @@ int main(){
 		
 		//check for one skipped frame
 		skipped= FALSE;
-		if (nFrameNo!=nframenumber[framenum-1]+1){
+#ifdef OPT_SAVE
+		if (nFrameNo!=nframenumber[framenum-1]+1 && nframenumber[framenum-1]!=278){
+#else
+		if (nFrameNo!=framenum_prev+1){
+#endif
 			bitplane_sequence--;
 			skipped= TRUE;
 		}
@@ -247,19 +254,21 @@ bitplane:
 			blanking_sequence= 0;
 		}
 		if (bitplane_sequence==BITPLANE_SEQUENCE_MAX) imgResult.data[offset]= 0;
-		if (skipped && (bitplane_sequence==22 || bitplane_sequence==19 || bitplane_sequence==16 || bitplane_sequence==13)) \
+		if (skipped && (bitplane_sequence==22 || bitplane_sequence==19 || bitplane_sequence==16 || bitplane_sequence==13 || \
+			bitplane_sequence==10 || bitplane_sequence==7 || bitplane_sequence==4 || bitplane_sequence==1)) \
 			imgResult.data[offset] |= (1<<shift[bitplane_sequence]);
 		else if (bitplane_sequence==23 || bitplane_sequence==20 || bitplane_sequence==17 || bitplane_sequence==14 || \
 			bitplane_sequence==11 || bitplane_sequence==8 || bitplane_sequence==5 || bitplane_sequence==2 ) \
-			imgResult.data[offset] |= (1<<shift[bitplane_sequence]);
+			imgResult.data[offset] |= (1<<shift[bitplane_sequence-1]);
 		
 		}
 	if ((background==TRUE) && (background_prev==TRUE)){
 		blanking_sequence= nblanking[framenum-1]+1;
+		//blanking_sequence= blanking_prev+1;
 		//blanking_sequence++; // why wouldn't this just work? T_T
+
 	}
-	if ((imgHead.data[offset] > imgHigh.data[offset]) && !(framenum%THRESHOLD_UPDATE_INTERVAL))\
-		imgHigh.data[offset]= imgHead.data[offset];
+	if (imgHead.data[offset] > imgHigh.data[offset]) imgHigh.data[offset]= imgHead.data[offset];
 	offset--;
 	if (offset!=-1) goto bitplane;
 	
@@ -271,60 +280,69 @@ bitplane:
 		offset=IMG_HEIGHT*IMG_WIDTH-1;
 thresheval:	
 #ifdef GRAY_CODED_PROJECTION
-		imgResult.data[offset] = grayToBinary_t(imgResult.data[offset]);
+		imgOutput.data[offset] = grayToBinary_t(imgResult.data[offset]);
+#else
+		imgOutput.data[offset] = imgResult.data[offset];
 #endif
 		// update treshold map
 		imgThreshold.data[offset]= imgHigh.data[offset]>>1;
 		imgHigh.data[offset]= THRESHOLD_LOW;
+		imgResult.data[offset]= 0;
 		offset--;
 		if (offset!=-1) goto thresheval;
-		imgOutput= imgResult.clone();
 		imgTrs= imgThreshold.clone();
-		//imgThreshold.copyTo(imgTrs);
-		}
-	
+#ifndef OPT_SAVE
+		imshow("reconstucted output",imgOutput);
+		if (waitKey(1)==27) break;
+#endif
+	}
+		
 	QueryPerformanceCounter(&EndingTime);
 	ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
 	ElapsedMicroseconds.QuadPart *= 1000000;
 	ElapsedMicroseconds.QuadPart /= Frequency.QuadPart;
 
-	//imgHigh.copyTo(imgOut[framenum]);
-	//imgThreshold.copyTo(imgTmp[framenum]);
+#ifdef OPT_SAVE
 	imgOut[framenum]= imgOutput.clone();
 	imgTmp[framenum]= imgTrs.clone();
+#endif
 
 	nframenumber[framenum] = nFrameNo;
 	nbitplane[framenum] = bitplane_sequence;
 	nbackground[framenum] = background;
 	nelapsedmicro[framenum] = ElapsedMicroseconds.QuadPart;
 	nblanking[framenum]= blanking_sequence;
-
+	
+	framenum_prev= framenum;
+	blanking_prev= blanking_sequence;
 	if (bitplane_sequence>0) bitplane_sequence--; // next bitplane sequence
-
+	
 	} // framenum end
 
-
-
-	//logging
+#ifdef OPT_SAVE
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		logfile << framenum << ';' << nframenumber[framenum] << ';' << nbackground[framenum] << ';' << (short int) nblanking[framenum] << ';' \
 			<< (short int) nbitplane[framenum] << ';' << nelapsedmicro[framenum] << endl; // add some info here
 	}
+#endif
+
+	//end of log
 	logfile << "stop  " << GetTickCount() << endl;
-	logfile.close();
-	
+	logfile.close();	
+
 #ifdef OPT_SAVE
 	cout << "start saving" << endl;
 	
 	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		try {
+			cout << framenum << endl;
 			sprintf_s(filename,"c%4.4d.bmp",framenum);
 			imwrite(filename, img[framenum]); // another
 			sprintf_s(filename,"t%4.4d.bmp",framenum);
 			imwrite(filename, imgTmp[framenum]); // another
 			sprintf_s(filename,"r%4.4d.bmp",framenum);
 			imwrite(filename, imgOut[framenum]); // another
-			sprintf_s(filename,"s%4.4d.bmp",framenum);
+			//sprintf_s(filename,"s%4.4d.bmp",framenum);
 			//resize(imgOut[framenum], ResultEnd, size, CV_INTER_AREA);
 			//imwrite(filename, ResultEnd); // another
 			
@@ -335,6 +353,7 @@ thresheval:
 		}
 	}
 #endif
+
 
 	if (idpConf.closeDevice() == PDC_FAILED) return 1;
 	destroyAllWindows();
