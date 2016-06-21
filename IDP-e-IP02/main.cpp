@@ -72,11 +72,13 @@ Mat *img, *imgOut, *imgTmp;
 Mat imagein;
 
 char buffer[256];
+#ifdef OPT_SAVE
 unsigned int nframenumber[FRAMENUM_MAX];
 unsigned short int nbitplane[FRAMENUM_MAX];
 bool nbackground[FRAMENUM_MAX];
 long long int nelapsedmicro[FRAMENUM_MAX];
 unsigned char pointvalue[FRAMENUM_MAX], nblanking[FRAMENUM_MAX];
+#endif
 
 int index_char= 0;
 std::string str;
@@ -169,7 +171,7 @@ int main(){
 	else idpConf.writeRegister(0, ADDR_THRE_HSV_CAM2, 0x00ff);
 	
 	// mess start here
-	unsigned int framenum;
+	unsigned int framenum, framenum_prev;
 	imgHead		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
 	imgHigh	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // high-level threshold map
 	imgThreshold		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // binarization threshold
@@ -177,7 +179,8 @@ int main(){
 	//imgResult		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC3); // color reconstructed frame
 	imgOutput	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // rendered frame
 	imgTrs = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // whole-frame threshold
-	
+
+
 #ifdef OPT_SAVE
 	img = new cv::Mat [FRAMENUM_MAX];
 	imgOut = new cv::Mat [FRAMENUM_MAX];
@@ -189,7 +192,7 @@ int main(){
 	}
 #endif
 
-	unsigned long	nFrameNo, oldFrameNo = 0, framenum_prev;
+	unsigned long	nFrameNo, oldFrameNo = 0;
 	void			*pBaseAddress;
 	
 	idpConf.writeRegister(0, 0xb4, 0); // just to be safe
@@ -246,6 +249,7 @@ int main(){
 		// stitch bit-planes if not background, ok
 		offset=IMG_HEIGHT*IMG_WIDTH-1;
 bitplane:
+	// upper threshold
 	if ((bitplane_sequence==26 || bitplane_sequence==25) && imgHead.data[offset] > imgHigh.data[offset])\
 		imgHigh.data[offset]= imgHead.data[offset];
 		
@@ -265,9 +269,15 @@ bitplane:
 			imgResult.data[offset] |= (1<<shift[bitplane_sequence-1]);
 		
 		}
+
+	// clearing
 	if ((background==TRUE) && (background_prev==TRUE)){
-		blanking_sequence= nblanking[framenum-1]+1;
-		//blanking_sequence= blanking_prev+1;
+#ifdef OPT_SAVE
+		if (skipped) blanking_sequence= nblanking[framenum-2]+2;
+		else blanking_sequence= nblanking[framenum-1]+1;
+#else	
+		blanking_sequence= blanking_prev+1;
+#endif
 		//blanking_sequence++; // why wouldn't this just work? T_T
 
 	}
@@ -292,13 +302,13 @@ thresheval:
 		imgResult.data[offset]= 0; // reset the output buffer
 		offset--;
 		if (offset!=-1) goto thresheval;
-		imgTrs= imgThreshold.clone();
-		imshow("reconstucted output",imgOutput);
-		if (waitKey(1)==27) break;
+
 #ifndef OPT_SAVE
 		imshow("reconstucted output",imgOutput);
 		if (waitKey(1)==27) break;
 #endif
+		imshow("reconstucted output",imgOutput);
+		if (waitKey(1)==27) break;
 	}
 		
 	QueryPerformanceCounter(&EndingTime);
@@ -309,14 +319,14 @@ thresheval:
 #ifdef OPT_SAVE
 	imgOut[framenum]= imgOutput.clone();
 	imgTmp[framenum]= imgTrs.clone();
-#endif
 
 	nframenumber[framenum] = nFrameNo;
 	nbitplane[framenum] = bitplane_sequence;
 	nbackground[framenum] = background;
 	nelapsedmicro[framenum] = ElapsedMicroseconds.QuadPart;
 	nblanking[framenum]= blanking_sequence;
-	
+#endif
+
 	framenum_prev= framenum;
 	blanking_prev= blanking_sequence;
 	if (bitplane_sequence>0) bitplane_sequence--; // next bitplane sequence
@@ -357,7 +367,6 @@ thresheval:
 		}
 	}
 #endif
-
 
 	if (idpConf.closeDevice() == PDC_FAILED) return 1;
 	destroyAllWindows();
