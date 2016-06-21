@@ -22,13 +22,13 @@
 #pragma comment(lib, "PDCLIB.lib")
 
 #define FPS			1000
-#define SHUTTER		1000
+#define SHUTTER		1250
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	512
 
 #define OPT_SAVE 
 #ifdef OPT_SAVE
-#define FRAMENUM_MAX 5000
+#define FRAMENUM_MAX 500
 #else
 #define FRAMENUM_MAX 50000
 #endif
@@ -58,10 +58,11 @@ IDPExpressConfig idpConf(1);
 
 #define THRESHOLD_INIT 100
 #define THRESHOLD_LOW 30
+#define THRESHOLD_HIGH 200
 #define THRESHOLD_UPDATE_INTERVAL 4
-#define BLANKING_OUT_FRAMES 5
-//#define GRAY_CODED_PROJECTION
-#define NOISE_VARIANCE 19
+#define BLANKING_OUT_FRAMES 3
+#define GRAY_CODED_PROJECTION
+#define NOISE_VARIANCE 20
 
 bool background=FALSE, background_prev=FALSE;
 bool skipped;
@@ -89,7 +90,7 @@ LARGE_INTEGER StartingTime, EndingTime, ElapsedMicroseconds;
 LARGE_INTEGER Frequency;
 
 //DLP stuff
-#define BITPLANE_SEQUENCE_MAX 24 // to 0
+#define BITPLANE_SEQUENCE_MAX 27 // 0 is stitching, -1 is waiting
 unsigned char shift[BITPLANE_SEQUENCE_MAX]={0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, \
 	5, 5, 5, 6, 6, 6, 7, 7, 7};
 char bitplane_sequence;
@@ -245,6 +246,9 @@ int main(){
 		// stitch bit-planes if not background, ok
 		offset=IMG_HEIGHT*IMG_WIDTH-1;
 bitplane:
+	if ((bitplane_sequence==26 || bitplane_sequence==25) && imgHead.data[offset] > imgHigh.data[offset])\
+		imgHigh.data[offset]= imgHead.data[offset];
+		
 	// not background frame i.e. greater than threshold map, stich 1, else keep 0
 	// CHECK THIS!!
 	if (imgHead.data[offset] > imgThreshold.data[offset]+NOISE_VARIANCE){ 
@@ -253,7 +257,6 @@ bitplane:
 			if (blanking_sequence>BLANKING_OUT_FRAMES) bitplane_sequence= BITPLANE_SEQUENCE_MAX; // new bitplane sequence
 			blanking_sequence= 0;
 		}
-		if (bitplane_sequence==BITPLANE_SEQUENCE_MAX) imgResult.data[offset]= 0;
 		if (skipped && (bitplane_sequence==22 || bitplane_sequence==19 || bitplane_sequence==16 || bitplane_sequence==13 || \
 			bitplane_sequence==10 || bitplane_sequence==7 || bitplane_sequence==4 || bitplane_sequence==1)) \
 			imgResult.data[offset] |= (1<<shift[bitplane_sequence]);
@@ -268,7 +271,6 @@ bitplane:
 		//blanking_sequence++; // why wouldn't this just work? T_T
 
 	}
-	if (imgHead.data[offset] > imgHigh.data[offset]) imgHigh.data[offset]= imgHead.data[offset];
 	offset--;
 	if (offset!=-1) goto bitplane;
 	
@@ -287,10 +289,12 @@ thresheval:
 		// update treshold map
 		imgThreshold.data[offset]= imgHigh.data[offset]>>1;
 		imgHigh.data[offset]= THRESHOLD_LOW;
-		imgResult.data[offset]= 0;
+		imgResult.data[offset]= 0; // reset the output buffer
 		offset--;
 		if (offset!=-1) goto thresheval;
 		imgTrs= imgThreshold.clone();
+		imshow("reconstucted output",imgOutput);
+		if (waitKey(1)==27) break;
 #ifndef OPT_SAVE
 		imshow("reconstucted output",imgOutput);
 		if (waitKey(1)==27) break;
