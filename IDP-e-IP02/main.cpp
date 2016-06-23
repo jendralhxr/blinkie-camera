@@ -72,13 +72,10 @@ Mat *img, *imgOut, *imgTmp;
 Mat imagein;
 
 char buffer[256];
-#ifdef OPT_SAVE
 unsigned int nframenumber[FRAMENUM_MAX];
-unsigned short int nbitplane[FRAMENUM_MAX];
+char nbitplane[FRAMENUM_MAX],  nblanking[FRAMENUM_MAX];
 bool nbackground[FRAMENUM_MAX];
-long long int nelapsedmicro[FRAMENUM_MAX];
-unsigned char pointvalue[FRAMENUM_MAX], nblanking[FRAMENUM_MAX];
-#endif
+long int nelapsedmicro[FRAMENUM_MAX];
 
 int index_char= 0;
 std::string str;
@@ -233,11 +230,7 @@ int main(){
 		
 		//check for one skipped frame
 		skipped= FALSE;
-#ifdef OPT_SAVE
 		if (nFrameNo!=nframenumber[framenum-1]+1 && nframenumber[framenum-1]!=278){
-#else
-		if (nFrameNo!=framenum_prev+1){
-#endif
 			bitplane_sequence--;
 			skipped= TRUE;
 		}
@@ -271,16 +264,10 @@ bitplane:
 
 	// clearing
 	if ((background==TRUE) && (background_prev==TRUE)){
-#ifdef OPT_SAVE
 		//if (skipped) blanking_sequence= nblanking[framenum-2]+2;
 		//else blanking_sequence= nblanking[framenum-1]+1;
-#else	
-		blanking_sequence= blanking_prev+1;
-
-#endif
 		if (skipped) blanking_sequence+=2;
 		else blanking_sequence++; // why wouldn't this just work? T_T
-
 	}
 	offset--;
 	if (offset!=-1) goto bitplane;
@@ -320,13 +307,14 @@ thresheval:
 #ifdef OPT_SAVE
 	//imgOut[framenum]= imgOutput.clone();
 	//imgTmp[framenum]= imgTrs.clone();
+#endif
 
 	nframenumber[framenum] = nFrameNo;
 	nbitplane[framenum] = bitplane_sequence;
 	nbackground[framenum] = background;
 	nelapsedmicro[framenum] = ElapsedMicroseconds.QuadPart;
 	nblanking[framenum]= blanking_sequence;
-#endif
+
 
 	framenum_prev= framenum;
 	blanking_prev= blanking_sequence;
@@ -334,12 +322,10 @@ thresheval:
 	
 	} // framenum end
 
-#ifdef OPT_SAVE
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
 		logfile << framenum << ';' << nframenumber[framenum] << ';' << nbackground[framenum] << ';' << (short int) nblanking[framenum] << ';' \
 			<< (short int) nbitplane[framenum] << ';' << nelapsedmicro[framenum] << endl; // add some info here
 	}
-#endif
 
 	//end of log
 	logfile << "stop  " << GetTickCount() << endl;
