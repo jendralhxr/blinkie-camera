@@ -22,13 +22,13 @@
 #pragma comment(lib, "PDCLIB.lib")
 
 #define FPS			1000
-#define SHUTTER		1250
+#define SHUTTER		1000
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	512
 
 #define OPT_SAVE 
 #ifdef OPT_SAVE
-#define FRAMENUM_MAX 500
+#define FRAMENUM_MAX 50000
 #else
 #define FRAMENUM_MAX 50000
 #endif
@@ -62,7 +62,7 @@ IDPExpressConfig idpConf(1);
 #define THRESHOLD_UPDATE_INTERVAL 4
 #define BLANKING_OUT_FRAMES 3
 #define GRAY_CODED_PROJECTION
-#define NOISE_VARIANCE 20
+#define NOISE_VARIANCE 24
 
 bool background=FALSE, background_prev=FALSE;
 bool skipped;
@@ -95,8 +95,7 @@ LARGE_INTEGER Frequency;
 #define BITPLANE_SEQUENCE_MAX 27 // 0 is stitching, -1 is waiting
 unsigned char shift[BITPLANE_SEQUENCE_MAX]={0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, \
 	5, 5, 5, 6, 6, 6, 7, 7, 7};
-char bitplane_sequence;
-unsigned char blanking_sequence, blanking_prev;
+char bitplane_sequence, blanking_sequence, blanking_prev;
 int i, j, offset;
 
 // Gray-code 8-bit value lookup table
@@ -186,9 +185,9 @@ int main(){
 	imgOut = new cv::Mat [FRAMENUM_MAX];
 	imgTmp = new cv::Mat [FRAMENUM_MAX];
 	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
-		img[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
-		imgOut[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
-		imgTmp[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
+		//img[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
+		//imgOut[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
+		//imgTmp[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
 	}
 #endif
 
@@ -229,7 +228,7 @@ int main(){
 
 		idpUtil.getHeadData(imgHead.data, 0);
 #ifdef OPT_SAVE
-		imgHead.copyTo(img[framenum]); //for later saving
+		//imgHead.copyTo(img[framenum]); //for later saving
 #endif
 		
 		//check for one skipped frame
@@ -273,12 +272,14 @@ bitplane:
 	// clearing
 	if ((background==TRUE) && (background_prev==TRUE)){
 #ifdef OPT_SAVE
-		if (skipped) blanking_sequence= nblanking[framenum-2]+2;
-		else blanking_sequence= nblanking[framenum-1]+1;
+		//if (skipped) blanking_sequence= nblanking[framenum-2]+2;
+		//else blanking_sequence= nblanking[framenum-1]+1;
 #else	
 		blanking_sequence= blanking_prev+1;
+
 #endif
-		//blanking_sequence++; // why wouldn't this just work? T_T
+		if (skipped) blanking_sequence+=2;
+		else blanking_sequence++; // why wouldn't this just work? T_T
 
 	}
 	offset--;
@@ -317,8 +318,8 @@ thresheval:
 	ElapsedMicroseconds.QuadPart /= Frequency.QuadPart;
 
 #ifdef OPT_SAVE
-	imgOut[framenum]= imgOutput.clone();
-	imgTmp[framenum]= imgTrs.clone();
+	//imgOut[framenum]= imgOutput.clone();
+	//imgTmp[framenum]= imgTrs.clone();
 
 	nframenumber[framenum] = nFrameNo;
 	nbitplane[framenum] = bitplane_sequence;
@@ -351,11 +352,11 @@ thresheval:
 		try {
 			cout << framenum << endl;
 			sprintf_s(filename,"c%4.4d.bmp",framenum);
-			imwrite(filename, img[framenum]); // another
+			//imwrite(filename, img[framenum]); // another
 			sprintf_s(filename,"t%4.4d.bmp",framenum);
-			imwrite(filename, imgTmp[framenum]); // another
+			//imwrite(filename, imgTmp[framenum]); // another
 			sprintf_s(filename,"r%4.4d.bmp",framenum);
-			imwrite(filename, imgOut[framenum]); // another
+			//imwrite(filename, imgOut[framenum]); // another
 			//sprintf_s(filename,"s%4.4d.bmp",framenum);
 			//resize(imgOut[framenum], ResultEnd, size, CV_INTER_AREA);
 			//imwrite(filename, ResultEnd); // another
