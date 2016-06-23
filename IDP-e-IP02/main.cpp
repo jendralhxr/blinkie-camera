@@ -28,7 +28,7 @@
 
 #define OPT_SAVE 
 #ifdef OPT_SAVE
-#define FRAMENUM_MAX 50000
+#define FRAMENUM_MAX 1000
 #else
 #define FRAMENUM_MAX 50000
 #endif
@@ -61,13 +61,13 @@ IDPExpressConfig idpConf(1);
 #define THRESHOLD_HIGH 200
 #define THRESHOLD_UPDATE_INTERVAL 4
 #define BLANKING_OUT_FRAMES 3
-#define GRAY_CODED_PROJECTION
-#define NOISE_VARIANCE 24
+//#define GRAY_CODED_PROJECTION
+#define NOISE_VARIANCE 20
 
 bool background=FALSE, background_prev=FALSE;
 bool skipped;
 
-Mat	imgHead, imgResult, imgHigh, imgThreshold, imgOutput, imgTrs;
+Mat	imgHead, imgResult, imgHigh, imgThreshold, imgOutput;
 Mat *img, *imgOut, *imgTmp;
 Mat imagein;
 
@@ -75,7 +75,7 @@ char buffer[256];
 unsigned int nframenumber[FRAMENUM_MAX];
 char nbitplane[FRAMENUM_MAX],  nblanking[FRAMENUM_MAX];
 bool nbackground[FRAMENUM_MAX];
-long int nelapsedmicro[FRAMENUM_MAX];
+long long int nelapsedmicro[FRAMENUM_MAX];
 
 int index_char= 0;
 std::string str;
@@ -167,24 +167,23 @@ int main(){
 	else idpConf.writeRegister(0, ADDR_THRE_HSV_CAM2, 0x00ff);
 	
 	// mess start here
-	unsigned int framenum, framenum_prev;
+	unsigned int framenum;
 	imgHead		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
 	imgHigh	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // high-level threshold map
 	imgThreshold		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // binarization threshold
 	imgResult	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // grayscale reconstructed frame
 	//imgResult		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC3); // color reconstructed frame
 	imgOutput	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // rendered frame
-	imgTrs = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // whole-frame threshold
-
+	
 
 #ifdef OPT_SAVE
-	img = new cv::Mat [FRAMENUM_MAX];
-	imgOut = new cv::Mat [FRAMENUM_MAX];
-	imgTmp = new cv::Mat [FRAMENUM_MAX];
+	img = new cv::Mat [FRAMENUM_MAX]; // capture 
+	imgOut = new cv::Mat [FRAMENUM_MAX]; // output
+	imgTmp = new cv::Mat [FRAMENUM_MAX]; // threshold
 	for(framenum=0; framenum<FRAMENUM_MAX; framenum++){
-		//img[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
-		//imgOut[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
-		//imgTmp[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
+		img[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
+		imgOut[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
+		imgTmp[framenum] = Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
 	}
 #endif
 
@@ -203,15 +202,11 @@ int main(){
 			imgHigh.data[offset]= THRESHOLD_LOW;
 			imgResult.data[offset]= 0; // or 0, if that matters
 			imgOutput.data[offset]= 0;
-			imgTrs.data[offset]= 0;
 		}
 	}
 	
-//#ifdef OPT_SAVE
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
-//#else 
 //	while(1){
-//#endif
 		waitframe:
 		if (idpConf.getLiveFrameAddress(0, &nFrameNo, &pBaseAddress) == PDC_FAILED ) break;
 		if (nFrameNo == oldFrameNo) goto waitframe;
@@ -225,7 +220,7 @@ int main(){
 
 		idpUtil.getHeadData(imgHead.data, 0);
 #ifdef OPT_SAVE
-		//imgHead.copyTo(img[framenum]); //for later saving
+		imgHead.copyTo(img[framenum]); //for later saving
 #endif
 		
 		//check for one skipped frame
@@ -242,7 +237,7 @@ int main(){
 		offset=IMG_HEIGHT*IMG_WIDTH-1;
 bitplane:
 	// upper threshold
-	if ((bitplane_sequence==26 || bitplane_sequence==25) && imgHead.data[offset] > imgHigh.data[offset])\
+	if ((bitplane_sequence==27 || bitplane_sequence==26 || bitplane_sequence==25) && imgHead.data[offset] > imgHigh.data[offset])\
 		imgHigh.data[offset]= imgHead.data[offset];
 		
 	// not background frame i.e. greater than threshold map, stich 1, else keep 0
@@ -291,10 +286,6 @@ thresheval:
 		offset--;
 		if (offset!=-1) goto thresheval;
 
-#ifndef OPT_SAVE
-		imshow("reconstucted output",imgOutput);
-		if (waitKey(1)==27) break;
-#endif
 		imshow("reconstucted output",imgOutput);
 		if (waitKey(1)==27) break;
 	}
@@ -305,8 +296,8 @@ thresheval:
 	ElapsedMicroseconds.QuadPart /= Frequency.QuadPart;
 
 #ifdef OPT_SAVE
-	//imgOut[framenum]= imgOutput.clone();
-	//imgTmp[framenum]= imgTrs.clone();
+	imgOut[framenum]= imgOutput.clone();
+	imgTmp[framenum]= imgThreshold.clone();
 #endif
 
 	nframenumber[framenum] = nFrameNo;
@@ -315,8 +306,6 @@ thresheval:
 	nelapsedmicro[framenum] = ElapsedMicroseconds.QuadPart;
 	nblanking[framenum]= blanking_sequence;
 
-
-	framenum_prev= framenum;
 	blanking_prev= blanking_sequence;
 	if (bitplane_sequence>0) bitplane_sequence--; // next bitplane sequence
 	
@@ -338,11 +327,11 @@ thresheval:
 		try {
 			cout << framenum << endl;
 			sprintf_s(filename,"c%4.4d.bmp",framenum);
-			//imwrite(filename, img[framenum]); // another
+			imwrite(filename, img[framenum]); // another
 			sprintf_s(filename,"t%4.4d.bmp",framenum);
-			//imwrite(filename, imgTmp[framenum]); // another
+			imwrite(filename, imgTmp[framenum]); // another
 			sprintf_s(filename,"r%4.4d.bmp",framenum);
-			//imwrite(filename, imgOut[framenum]); // another
+			imwrite(filename, imgOut[framenum]); // another
 			//sprintf_s(filename,"s%4.4d.bmp",framenum);
 			//resize(imgOut[framenum], ResultEnd, size, CV_INTER_AREA);
 			//imwrite(filename, ResultEnd); // another
