@@ -28,9 +28,9 @@
 
 #define OPT_SAVE 
 #ifdef OPT_SAVE
-#define FRAMENUM_MAX 1000
+#define FRAMENUM_MAX 500
 #else
-#define FRAMENUM_MAX 50000
+#define FRAMENUM_MAX 10000
 #endif
 
 using namespace IDPExpress;
@@ -56,13 +56,13 @@ IDPExpressConfig idpConf(1);
 #define ADDR_ROI1_CAM2		0x30
 #define ADDR_ROI2_CAM2		0x34
 
-#define THRESHOLD_INIT 100
+#define THRESHOLD_INIT 140
 #define THRESHOLD_LOW 30
 #define THRESHOLD_HIGH 200
 #define THRESHOLD_UPDATE_INTERVAL 4
 #define BLANKING_OUT_FRAMES 3
-//#define GRAY_CODED_PROJECTION
-#define NOISE_VARIANCE 20
+#define GRAY_CODED_PROJECTION
+#define NOISE_VARIANCE 30
 
 bool background=FALSE, background_prev=FALSE;
 bool skipped;
@@ -194,7 +194,7 @@ int main(){
 	logfile.open("log.txt");
 	logfile << "start " << GetTickCount() << endl;
 
-	// initialize threshold map
+	// initialize threshold maps
 	for (j=0; j<IMG_HEIGHT; j++){
 		for (i=0; i<IMG_WIDTH; i++){
 			offset= j*IMG_WIDTH+i;
@@ -226,7 +226,6 @@ int main(){
 		//check for one skipped frame
 		skipped= FALSE;
 		if (nFrameNo!=nframenumber[framenum-1]+1 && nframenumber[framenum-1]!=278){
-			bitplane_sequence--;
 			skipped= TRUE;
 		}
 		
@@ -242,7 +241,8 @@ bitplane:
 		
 	// not background frame i.e. greater than threshold map, stich 1, else keep 0
 	// CHECK THIS!!
-	if (imgHead.data[offset] > imgThreshold.data[offset]+NOISE_VARIANCE){ 
+	//if (imgHead.data[offset] > 200){ 
+	if (imgHead.data[offset] > imgThreshold.data[offset] +NOISE_VARIANCE){ 
 		if (background==TRUE){
 			background= FALSE;
 			if (blanking_sequence>BLANKING_OUT_FRAMES) bitplane_sequence= BITPLANE_SEQUENCE_MAX; // new bitplane sequence
@@ -256,11 +256,8 @@ bitplane:
 			imgResult.data[offset] |= (1<<shift[bitplane_sequence-1]);
 		
 		}
-
 	// clearing
 	if ((background==TRUE) && (background_prev==TRUE)){
-		//if (skipped) blanking_sequence= nblanking[framenum-2]+2;
-		//else blanking_sequence= nblanking[framenum-1]+1;
 		if (skipped) blanking_sequence+=2;
 		else blanking_sequence++; // why wouldn't this just work? T_T
 	}
@@ -286,7 +283,7 @@ thresheval:
 		offset--;
 		if (offset!=-1) goto thresheval;
 
-		imshow("reconstucted output",imgOutput);
+		//imshow("reconstucted output",imgOutput);
 		if (waitKey(1)==27) break;
 	}
 		
@@ -307,7 +304,10 @@ thresheval:
 	nblanking[framenum]= blanking_sequence;
 
 	blanking_prev= blanking_sequence;
-	if (bitplane_sequence>0) bitplane_sequence--; // next bitplane sequence
+	if (bitplane_sequence>0) {
+		if (skipped) bitplane_sequence -= nFrameNo-nframenumber[framenum-1];
+		else bitplane_sequence--; // next bitplane sequence
+	}
 	
 	} // framenum end
 
