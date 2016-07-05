@@ -56,13 +56,13 @@ IDPExpressConfig idpConf(1);
 #define ADDR_ROI1_CAM2		0x30
 #define ADDR_ROI2_CAM2		0x34
 
-#define THRESHOLD_INIT 140
+#define THRESHOLD_INIT 120
 #define THRESHOLD_LOW 30
 #define THRESHOLD_HIGH 200
 #define THRESHOLD_UPDATE_INTERVAL 4
 #define BLANKING_OUT_FRAMES 3
 #define GRAY_CODED_PROJECTION
-#define NOISE_VARIANCE 30
+#define NOISE_VARIANCE 20
 
 bool background=FALSE, background_prev=FALSE;
 bool skipped;
@@ -225,7 +225,7 @@ int main(){
 		
 		//check for one skipped frame
 		skipped= FALSE;
-		if (nFrameNo!=nframenumber[framenum-1]+1 && nframenumber[framenum-1]!=278){
+		if (nFrameNo!=nframenumber[framenum-1]+1 && nframenumber[framenum-1]-191!=nFrameNo){
 			skipped= TRUE;
 		}
 		
@@ -241,12 +241,14 @@ bitplane:
 		
 	// not background frame i.e. greater than threshold map, stich 1, else keep 0
 	// CHECK THIS!!
-	//if (imgHead.data[offset] > 200){ 
-	if (imgHead.data[offset] > imgThreshold.data[offset] +NOISE_VARIANCE){ 
+	//if (imgHead.data[offset] > 100){ 
+	if (imgHead.data[offset] > imgThreshold.data[offset] ){ 
 		if (background==TRUE){
 			background= FALSE;
-			if (blanking_sequence>BLANKING_OUT_FRAMES) bitplane_sequence= BITPLANE_SEQUENCE_MAX; // new bitplane sequence
-			blanking_sequence= 0;
+			if (blanking_sequence>BLANKING_OUT_FRAMES){
+				bitplane_sequence= BITPLANE_SEQUENCE_MAX; // new bitplane sequence
+				blanking_sequence= 0;
+			}
 		}
 		if (skipped && (bitplane_sequence==22 || bitplane_sequence==19 || bitplane_sequence==16 || bitplane_sequence==13 || \
 			bitplane_sequence==10 || bitplane_sequence==7 || bitplane_sequence==4 || bitplane_sequence==1)) \
@@ -256,11 +258,14 @@ bitplane:
 			imgResult.data[offset] |= (1<<shift[bitplane_sequence-1]);
 		
 		}
-	// clearing
+
+	// background frame, blanking sequence
 	if ((background==TRUE) && (background_prev==TRUE)){
-		if (skipped) blanking_sequence+=2;
-		else blanking_sequence++; // why wouldn't this just work? T_T
+		if (!skipped) blanking_sequence= nblanking[framenum-1]+1;
+		else blanking_sequence= nblanking[framenum-1] +(nFrameNo-nframenumber[framenum-1]);
 	}
+	nblanking[framenum] = blanking_sequence;
+	
 	offset--;
 	if (offset!=-1) goto bitplane;
 	
@@ -277,7 +282,7 @@ thresheval:
 		imgOutput.data[offset] = imgResult.data[offset];
 #endif
 		// update treshold map
-		imgThreshold.data[offset]= imgHigh.data[offset]>>1;
+		imgThreshold.data[offset]= NOISE_VARIANCE + (imgHigh.data[offset]>>1);
 		imgHigh.data[offset]= THRESHOLD_LOW;
 		imgResult.data[offset]= 0; // reset the output buffer
 		offset--;
@@ -286,16 +291,16 @@ thresheval:
 		//imshow("reconstucted output",imgOutput);
 		if (waitKey(1)==27) break;
 	}
-		
-	QueryPerformanceCounter(&EndingTime);
-	ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
-	ElapsedMicroseconds.QuadPart *= 1000000;
-	ElapsedMicroseconds.QuadPart /= Frequency.QuadPart;
 
 #ifdef OPT_SAVE
 	imgOut[framenum]= imgOutput.clone();
 	imgTmp[framenum]= imgThreshold.clone();
 #endif
+
+	QueryPerformanceCounter(&EndingTime);
+	ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
+	ElapsedMicroseconds.QuadPart *= 1000000;
+	ElapsedMicroseconds.QuadPart /= Frequency.QuadPart;
 
 	nframenumber[framenum] = nFrameNo;
 	nbitplane[framenum] = bitplane_sequence;
