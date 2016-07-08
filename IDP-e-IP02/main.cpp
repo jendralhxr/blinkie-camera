@@ -1,7 +1,6 @@
 #include "IDPExpressUtil.h"
 #include "IDPExpressConfig.h"
 #include "iocsv.hpp"
-//#include "timer.h"
 #include "windows.h"
 
 #include <iostream>
@@ -67,7 +66,7 @@ IDPExpressConfig idpConf(1);
 bool background=FALSE, background_prev=FALSE;
 bool skipped;
 
-Mat	imgHead, imgResult, imgHigh, imgThreshold, imgOutput;
+//Mat	imgHead, imgResult, imgHigh, imgThreshold, imgOutput;
 Mat *img, *imgOut, *imgTmp;
 Mat imagein;
 
@@ -92,7 +91,7 @@ LARGE_INTEGER Frequency;
 #define BITPLANE_SEQUENCE_MAX 27 // 0 is stitching, -1 is waiting
 unsigned char shift[BITPLANE_SEQUENCE_MAX]={0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, \
 	5, 5, 5, 6, 6, 6, 7, 7, 7};
-char bitplane_sequence, blanking_sequence, blanking_prev;
+char bitplane_sequence, blanking_sequence;
 int i, j, offset;
 
 // Gray-code 8-bit value lookup table
@@ -121,6 +120,15 @@ unsigned int grayToBinary_t(unsigned int val){
 
 Size size(IMG_WIDTH,2*IMG_HEIGHT);
 Mat ResultEnd;
+
+	// mess start here
+	unsigned int framenum;
+	Mat imgHead		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
+	Mat imgHigh	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // high-level threshold map
+	Mat imgThreshold		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // binarization threshold
+	Mat imgResult	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // grayscale reconstructed frame
+	//Mat imgResult		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC3); // color reconstructed frame
+	Mat imgOutput	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // rendered frame
 
 int main(){
 	QueryPerformanceFrequency(&Frequency); 
@@ -166,16 +174,6 @@ int main(){
 	if(colortype_cam2 == 1) idpConf.writeRegister(0, ADDR_THRE_HSV_CAM2, 0x00ff0000);
 	else idpConf.writeRegister(0, ADDR_THRE_HSV_CAM2, 0x00ff);
 	
-	// mess start here
-	unsigned int framenum;
-	imgHead		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1);
-	imgHigh	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // high-level threshold map
-	imgThreshold		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // binarization threshold
-	imgResult	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // grayscale reconstructed frame
-	//imgResult		= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC3); // color reconstructed frame
-	imgOutput	= Mat(IMG_HEIGHT, IMG_WIDTH, CV_8UC1); // rendered frame
-	
-
 #ifdef OPT_SAVE
 	img = new cv::Mat [FRAMENUM_MAX]; // capture 
 	imgOut = new cv::Mat [FRAMENUM_MAX]; // output
@@ -206,6 +204,7 @@ int main(){
 	}
 	
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
+	
 //	while(1){
 		waitframe:
 		if (idpConf.getLiveFrameAddress(0, &nFrameNo, &pBaseAddress) == PDC_FAILED ) break;
@@ -225,7 +224,7 @@ int main(){
 		
 		//check for one skipped frame
 		skipped= FALSE;
-		if (nFrameNo!=nframenumber[framenum-1]+1 && nframenumber[framenum-1]-191!=nFrameNo){
+		if (framenum!=0 && nFrameNo!=nframenumber[framenum-1]+1 && nframenumber[framenum-1]-191!=nFrameNo){
 			skipped= TRUE;
 		}
 		
@@ -261,8 +260,11 @@ bitplane:
 
 	// background frame, blanking sequence
 	if ((background==TRUE) && (background_prev==TRUE)){
-		if (!skipped) blanking_sequence= nblanking[framenum-1]+1;
-		else blanking_sequence= nblanking[framenum-1] +(nFrameNo-nframenumber[framenum-1]);
+		if (skipped) {
+			if (nframenumber[framenum-1] > nFrameNo) blanking_sequence= nblanking[framenum-1] + (nFrameNo-(nframenumber[framenum-1]-192));
+			else blanking_sequence= nblanking[framenum-1] +(nFrameNo-nframenumber[framenum-1]);
+		}
+		else blanking_sequence= nblanking[framenum-1]+1; 
 	}
 	nblanking[framenum] = blanking_sequence;
 	
@@ -287,15 +289,23 @@ thresheval:
 		imgResult.data[offset]= 0; // reset the output buffer
 		offset--;
 		if (offset!=-1) goto thresheval;
-
-		//imshow("reconstucted output",imgOutput);
-		if (waitKey(1)==27) break;
+	
+	//imshow("reconstucted output",imgOutput);
+	if (waitKey(1)==27) break;
 	}
 
 #ifdef OPT_SAVE
 	imgOut[framenum]= imgOutput.clone();
 	imgTmp[framenum]= imgThreshold.clone();
 #endif
+
+	if (bitplane_sequence>0) {
+		if (skipped){
+		if (nframenumber[framenum-1] > nFrameNo) bitplane_sequence -= nFrameNo-(nframenumber[framenum-1]-192);
+		else bitplane_sequence -= nFrameNo-nframenumber[framenum-1];
+		}
+		else bitplane_sequence--; // next bitplane sequence
+	}
 
 	QueryPerformanceCounter(&EndingTime);
 	ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
@@ -308,12 +318,6 @@ thresheval:
 	nelapsedmicro[framenum] = ElapsedMicroseconds.QuadPart;
 	nblanking[framenum]= blanking_sequence;
 
-	blanking_prev= blanking_sequence;
-	if (bitplane_sequence>0) {
-		if (skipped) bitplane_sequence -= nFrameNo-nframenumber[framenum-1];
-		else bitplane_sequence--; // next bitplane sequence
-	}
-	
 	} // framenum end
 
 	for (framenum=0; framenum<FRAMENUM_MAX; framenum++){
@@ -353,3 +357,12 @@ thresheval:
 	destroyAllWindows();
 	return(0);
 	}
+
+UINT DisplayThread() {
+	while (framenum<FRAMENUM_MAX) {
+		if (framenum%50==0) logfile << "mooo";
+		//	cvShowImage("whoa", imgOutput);
+		//	cvWaitKey(1);
+  }
+return 0;
+}
