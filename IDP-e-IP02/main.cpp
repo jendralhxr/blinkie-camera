@@ -234,13 +234,7 @@ int main(){
 		// stitch bit-planes if not background, ok
 		offset=IMG_HEIGHT*IMG_WIDTH-1;
 bitplane:
-	// upper threshold
-	if ((bitplane_sequence==27 || bitplane_sequence==26 || bitplane_sequence==25) && imgHead.data[offset] > imgHigh.data[offset])\
-		imgHigh.data[offset]= imgHead.data[offset];
-		
-	// not background frame i.e. greater than threshold map, stich 1, else keep 0
-	// CHECK THIS!!
-	//if (imgHead.data[offset] > 100){ 
+	// if (imgHead.data[offset] > 100){ 
 	if (imgHead.data[offset] > imgThreshold.data[offset] ){ 
 		if (background==TRUE){
 			background= FALSE;
@@ -249,13 +243,17 @@ bitplane:
 				blanking_sequence= 0;
 			}
 		}
+		
+		// upper threshold
+		if ((bitplane_sequence==27 || bitplane_sequence==26 || bitplane_sequence==25) && imgHead.data[offset] > imgHigh.data[offset])\
+			imgHigh.data[offset]= imgHead.data[offset];
+		// stitch bitplanes
 		if (skipped && (bitplane_sequence==22 || bitplane_sequence==19 || bitplane_sequence==16 || bitplane_sequence==13 || \
 			bitplane_sequence==10 || bitplane_sequence==7 || bitplane_sequence==4 || bitplane_sequence==1)) \
 			imgResult.data[offset] |= (1<<shift[bitplane_sequence]);
 		else if (bitplane_sequence==23 || bitplane_sequence==20 || bitplane_sequence==17 || bitplane_sequence==14 || \
 			bitplane_sequence==11 || bitplane_sequence==8 || bitplane_sequence==5 || bitplane_sequence==2 ) \
 			imgResult.data[offset] |= (1<<shift[bitplane_sequence-1]);
-		
 		}
 
 	// background frame, blanking sequence
