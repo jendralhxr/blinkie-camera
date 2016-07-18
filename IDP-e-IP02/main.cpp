@@ -8,7 +8,7 @@
 #include <sstream>
 #include <iomanip>
 #include <ctime>
-
+  
 #ifdef _DEBUG
 #pragma comment(lib, "opencv_core247d.lib")
 #pragma comment(lib, "opencv_imgproc247d.lib")
@@ -55,13 +55,12 @@ IDPExpressConfig idpConf(1);
 #define ADDR_ROI1_CAM2		0x30
 #define ADDR_ROI2_CAM2		0x34
 
-#define THRESHOLD_INIT 120
-#define THRESHOLD_LOW 30
-#define THRESHOLD_HIGH 200
+#define THRESHOLD_INIT 140
+#define THRESHOLD_LOW 20
 #define THRESHOLD_UPDATE_INTERVAL 4
 #define BLANKING_OUT_FRAMES 3
-#define GRAY_CODED_PROJECTION
-#define NOISE_VARIANCE 20
+//#define GRAY_CODED_PROJECTION
+#define NOISE_VARIANCE 24
 
 bool background=FALSE, background_prev=FALSE;
 bool skipped;
@@ -89,8 +88,7 @@ LARGE_INTEGER Frequency;
 
 //DLP stuff
 #define BITPLANE_SEQUENCE_MAX 27 // 0 is stitching, -1 is waiting
-unsigned char shift[BITPLANE_SEQUENCE_MAX]={0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, \
-	5, 5, 5, 6, 6, 6, 7, 7, 7};
+unsigned char shift[BITPLANE_SEQUENCE_MAX+1]={0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 0, 0, 0};
 char bitplane_sequence, blanking_sequence;
 int i, j, offset;
 
@@ -220,6 +218,7 @@ int main(){
 		idpUtil.getHeadData(imgHead.data, 0);
 #ifdef OPT_SAVE
 		imgHead.copyTo(img[framenum]); //for later saving
+		imgThreshold.copyTo(imgTmp[framenum]);
 #endif
 		
 		//check for one skipped frame
@@ -234,7 +233,8 @@ int main(){
 		// stitch bit-planes if not background, ok
 		offset=IMG_HEIGHT*IMG_WIDTH-1;
 bitplane:
-	// if (imgHead.data[offset] > 100){ 
+	// not background frame i.e. greater than threshold map, stich 1, else keep 0
+	//if (imgHead.data[offset] > 120){ 
 	if (imgHead.data[offset] > imgThreshold.data[offset] ){ 
 		if (background==TRUE){
 			background= FALSE;
@@ -243,17 +243,18 @@ bitplane:
 				blanking_sequence= 0;
 			}
 		}
-		
 		// upper threshold
-		if ((bitplane_sequence==27 || bitplane_sequence==26 || bitplane_sequence==25) && imgHead.data[offset] > imgHigh.data[offset])\
+		if ((bitplane_sequence==27 || bitplane_sequence==26) && imgHead.data[offset] > imgHigh.data[offset]){
 			imgHigh.data[offset]= imgHead.data[offset];
-		// stitch bitplanes
+			imgThreshold.data[offset]= NOISE_VARIANCE + (imgHigh.data[offset]>>1);
+		}
 		if (skipped && (bitplane_sequence==22 || bitplane_sequence==19 || bitplane_sequence==16 || bitplane_sequence==13 || \
 			bitplane_sequence==10 || bitplane_sequence==7 || bitplane_sequence==4 || bitplane_sequence==1)) \
 			imgResult.data[offset] |= (1<<shift[bitplane_sequence]);
 		else if (bitplane_sequence==23 || bitplane_sequence==20 || bitplane_sequence==17 || bitplane_sequence==14 || \
 			bitplane_sequence==11 || bitplane_sequence==8 || bitplane_sequence==5 || bitplane_sequence==2 ) \
 			imgResult.data[offset] |= (1<<shift[bitplane_sequence-1]);
+		
 		}
 
 	// background frame, blanking sequence
@@ -268,12 +269,17 @@ bitplane:
 	
 	offset--;
 	if (offset!=-1) goto bitplane;
-	
+
+#ifdef OPT_SAVE
+	imgOut[framenum]= imgResult.clone();
+#endif
+
 	// if background-only frame found after sequence ends
 	// reconvert Gray-coded projection, ok
 	// calculate new threshold map (half of maximum), k
-	if (bitplane_sequence==0){
-		bitplane_sequence= -1;
+	if (bitplane_sequence==0) bitplane_sequence= -1;
+	
+	if (blanking_sequence > BLANKING_OUT_FRAMES){
 		offset=IMG_HEIGHT*IMG_WIDTH-1;
 thresheval:	
 #ifdef GRAY_CODED_PROJECTION
@@ -281,9 +287,7 @@ thresheval:
 #else
 		imgOutput.data[offset] = imgResult.data[offset];
 #endif
-		// update treshold map
-		imgThreshold.data[offset]= NOISE_VARIANCE + (imgHigh.data[offset]>>1);
-		imgHigh.data[offset]= THRESHOLD_LOW;
+		imgHigh.data[offset]= THRESHOLD_LOW; // reset threshold buffer
 		imgResult.data[offset]= 0; // reset the output buffer
 		offset--;
 		if (offset!=-1) goto thresheval;
@@ -293,17 +297,9 @@ thresheval:
 	}
 
 #ifdef OPT_SAVE
-	imgOut[framenum]= imgOutput.clone();
-	imgTmp[framenum]= imgThreshold.clone();
+//	imgOut[framenum]= imgOutput.clone();
 #endif
 
-	if (bitplane_sequence>0) {
-		if (skipped){
-		if (nframenumber[framenum-1] > nFrameNo) bitplane_sequence -= nFrameNo-(nframenumber[framenum-1]-192);
-		else bitplane_sequence -= nFrameNo-nframenumber[framenum-1];
-		}
-		else bitplane_sequence--; // next bitplane sequence
-	}
 
 	QueryPerformanceCounter(&EndingTime);
 	ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
@@ -315,6 +311,14 @@ thresheval:
 	nbackground[framenum] = background;
 	nelapsedmicro[framenum] = ElapsedMicroseconds.QuadPart;
 	nblanking[framenum]= blanking_sequence;
+
+	if (bitplane_sequence>0) {
+		if (skipped){
+		if (nframenumber[framenum-1] > nFrameNo) bitplane_sequence -= nFrameNo-(nframenumber[framenum-1]-192);
+		else bitplane_sequence -= nFrameNo-nframenumber[framenum-1];
+		}
+		else bitplane_sequence--; // next bitplane sequence
+	}
 
 	} // framenum end
 
