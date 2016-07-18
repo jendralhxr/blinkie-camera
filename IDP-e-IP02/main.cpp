@@ -27,7 +27,7 @@
 
 #define OPT_SAVE 
 #ifdef OPT_SAVE
-#define FRAMENUM_MAX 500
+#define FRAMENUM_MAX 5000
 #else
 #define FRAMENUM_MAX 10000
 #endif
@@ -55,12 +55,11 @@ IDPExpressConfig idpConf(1);
 #define ADDR_ROI1_CAM2		0x30
 #define ADDR_ROI2_CAM2		0x34
 
-#define THRESHOLD_INIT 140
+#define THRESHOLD_INIT 100
 #define THRESHOLD_LOW 20
 #define THRESHOLD_UPDATE_INTERVAL 4
 #define BLANKING_OUT_FRAMES 3
-//#define GRAY_CODED_PROJECTION
-#define NOISE_VARIANCE 24
+#define GRAY_CODED_PROJECTION
 
 bool background=FALSE, background_prev=FALSE;
 bool skipped;
@@ -190,7 +189,7 @@ int main(){
 	logfile.open("log.txt");
 	logfile << "start " << GetTickCount() << endl;
 
-	// initialize threshold maps
+	// initialize mats
 	for (j=0; j<IMG_HEIGHT; j++){
 		for (i=0; i<IMG_WIDTH; i++){
 			offset= j*IMG_WIDTH+i;
@@ -246,7 +245,7 @@ bitplane:
 		// upper threshold
 		if ((bitplane_sequence==27 || bitplane_sequence==26) && imgHead.data[offset] > imgHigh.data[offset]){
 			imgHigh.data[offset]= imgHead.data[offset];
-			imgThreshold.data[offset]= NOISE_VARIANCE + (imgHigh.data[offset]>>1);
+			imgThreshold.data[offset]= (imgHigh.data[offset]>>1);
 		}
 		if (skipped && (bitplane_sequence==22 || bitplane_sequence==19 || bitplane_sequence==16 || bitplane_sequence==13 || \
 			bitplane_sequence==10 || bitplane_sequence==7 || bitplane_sequence==4 || bitplane_sequence==1)) \
@@ -270,8 +269,9 @@ bitplane:
 	offset--;
 	if (offset!=-1) goto bitplane;
 
+// bitplane stitching progress
 #ifdef OPT_SAVE
-	imgOut[framenum]= imgResult.clone();
+	//imgOut[framenum]= imgResult.clone();
 #endif
 
 	// if background-only frame found after sequence ends
@@ -279,7 +279,7 @@ bitplane:
 	// calculate new threshold map (half of maximum), k
 	if (bitplane_sequence==0) bitplane_sequence= -1;
 	
-	if (blanking_sequence > BLANKING_OUT_FRAMES){
+	if (blanking_sequence==BLANKING_OUT_FRAMES){
 		offset=IMG_HEIGHT*IMG_WIDTH-1;
 thresheval:	
 #ifdef GRAY_CODED_PROJECTION
@@ -292,19 +292,20 @@ thresheval:
 		offset--;
 		if (offset!=-1) goto thresheval;
 	
+	// rendering
 	//imshow("reconstucted output",imgOutput);
-	if (waitKey(1)==27) break;
+	//if (waitKey(1)==27) break;
 	}
 
 #ifdef OPT_SAVE
-//	imgOut[framenum]= imgOutput.clone();
+	imgOutput.copyTo(imgOut[framenum]);
 #endif
-
 
 	QueryPerformanceCounter(&EndingTime);
 	ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
 	ElapsedMicroseconds.QuadPart *= 1000000;
 	ElapsedMicroseconds.QuadPart /= Frequency.QuadPart;
+
 
 	nframenumber[framenum] = nFrameNo;
 	nbitplane[framenum] = bitplane_sequence;
@@ -359,12 +360,3 @@ thresheval:
 	destroyAllWindows();
 	return(0);
 	}
-
-UINT DisplayThread() {
-	while (framenum<FRAMENUM_MAX) {
-		if (framenum%50==0) logfile << "mooo";
-		//	cvShowImage("whoa", imgOutput);
-		//	cvWaitKey(1);
-  }
-return 0;
-}
