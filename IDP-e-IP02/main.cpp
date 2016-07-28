@@ -25,11 +25,11 @@
 #define IMG_WIDTH	512
 #define IMG_HEIGHT	512
 
-#define OPT_SAVE 
+//#define OPT_SAVE 
 #ifdef OPT_SAVE
-#define FRAMENUM_MAX 5000
+#define FRAMENUM_MAX 1000
 #else
-#define FRAMENUM_MAX 10000
+#define FRAMENUM_MAX 5000
 #endif
 
 using namespace IDPExpress;
@@ -57,8 +57,7 @@ IDPExpressConfig idpConf(1);
 
 #define THRESHOLD_INIT 100
 #define THRESHOLD_LOW 20
-#define THRESHOLD_UPDATE_INTERVAL 4
-#define BLANKING_OUT_FRAMES 3
+#define BLANKING_OUT_FRAMES 2
 #define GRAY_CODED_PROJECTION
 
 bool background=FALSE, background_prev=FALSE;
@@ -87,7 +86,8 @@ LARGE_INTEGER Frequency;
 
 //DLP stuff
 #define BITPLANE_SEQUENCE_MAX 27 // 0 is stitching, -1 is waiting
-unsigned char shift[BITPLANE_SEQUENCE_MAX+1]={0, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 0, 0, 0};
+unsigned char shift[BITPLANE_SEQUENCE_MAX]={0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 0, 0, 0};
+//unsigned char shift[BITPLANE_SEQUENCE_MAX]={7, 7, 7, 6, 6, 6, 5, 5, 5, 4, 4, 4, 3, 3, 3, 2, 2, 2, 1, 1, 1, 0, 0, 0, 0, 0, 0};
 char bitplane_sequence, blanking_sequence;
 int i, j, offset;
 
@@ -114,9 +114,6 @@ unsigned char lookup[256]={\
 unsigned int grayToBinary_t(unsigned int val){
 	return(lookup[val]);
 }
-
-Size size(IMG_WIDTH,2*IMG_HEIGHT);
-Mat ResultEnd;
 
 	// mess start here
 	unsigned int framenum;
@@ -182,6 +179,12 @@ int main(){
 	}
 #endif
 
+#ifndef OPT_SAVE
+// video output
+	sprintf(filename, "%d.avi", GetTickCount());
+	//cv::VideoWriter videofile(filename, -1, 30, cv::Size(512,512), false);
+#endif
+
 	unsigned long	nFrameNo, oldFrameNo = 0;
 	void			*pBaseAddress;
 	
@@ -225,6 +228,14 @@ int main(){
 		if (framenum!=0 && nFrameNo!=nframenumber[framenum-1]+1 && nframenumber[framenum-1]-191!=nFrameNo){
 			skipped= TRUE;
 		}
+
+		if (bitplane_sequence>0) {
+		if (skipped){
+		if (nframenumber[framenum-1] > nFrameNo) bitplane_sequence -= nFrameNo-(nframenumber[framenum-1]-192);
+		else bitplane_sequence -= nFrameNo-nframenumber[framenum-1];
+		}
+		else bitplane_sequence--; // next bitplane sequence
+	}
 		
 		// THE ROUTINE
 		// update high threshold map for bitplane, ok
@@ -247,13 +258,15 @@ bitplane:
 			imgHigh.data[offset]= imgHead.data[offset];
 			imgThreshold.data[offset]= (imgHigh.data[offset]>>1);
 		}
+		// stitching
+		if (bitplane_sequence>=0){
 		if (skipped && (bitplane_sequence==22 || bitplane_sequence==19 || bitplane_sequence==16 || bitplane_sequence==13 || \
 			bitplane_sequence==10 || bitplane_sequence==7 || bitplane_sequence==4 || bitplane_sequence==1)) \
 			imgResult.data[offset] |= (1<<shift[bitplane_sequence]);
 		else if (bitplane_sequence==23 || bitplane_sequence==20 || bitplane_sequence==17 || bitplane_sequence==14 || \
 			bitplane_sequence==11 || bitplane_sequence==8 || bitplane_sequence==5 || bitplane_sequence==2 ) \
 			imgResult.data[offset] |= (1<<shift[bitplane_sequence-1]);
-		
+		}
 		}
 
 	// background frame, blanking sequence
@@ -292,14 +305,17 @@ thresheval:
 		offset--;
 		if (offset!=-1) goto thresheval;
 	
-	// rendering
-	//imshow("reconstucted output",imgOutput);
-	//if (waitKey(1)==27) break;
+#ifndef OPT_SAVE
+		//videofile.write(imgOutput);
+		sprintf_s(filename,"%d.bmp",GetTickCount());
+		imwrite(filename, imgOutput); // another
+#endif
 	}
 
 #ifdef OPT_SAVE
 	imgOutput.copyTo(imgOut[framenum]);
 #endif
+
 
 	QueryPerformanceCounter(&EndingTime);
 	ElapsedMicroseconds.QuadPart = EndingTime.QuadPart - StartingTime.QuadPart;
@@ -312,14 +328,6 @@ thresheval:
 	nbackground[framenum] = background;
 	nelapsedmicro[framenum] = ElapsedMicroseconds.QuadPart;
 	nblanking[framenum]= blanking_sequence;
-
-	if (bitplane_sequence>0) {
-		if (skipped){
-		if (nframenumber[framenum-1] > nFrameNo) bitplane_sequence -= nFrameNo-(nframenumber[framenum-1]-192);
-		else bitplane_sequence -= nFrameNo-nframenumber[framenum-1];
-		}
-		else bitplane_sequence--; // next bitplane sequence
-	}
 
 	} // framenum end
 
@@ -344,9 +352,6 @@ thresheval:
 			imwrite(filename, imgTmp[framenum]); // another
 			sprintf_s(filename,"r%4.4d.bmp",framenum);
 			imwrite(filename, imgOut[framenum]); // another
-			//sprintf_s(filename,"s%4.4d.bmp",framenum);
-			//resize(imgOut[framenum], ResultEnd, size, CV_INTER_AREA);
-			//imwrite(filename, ResultEnd); // another
 			
 		}
 		catch (runtime_error& ex) {
